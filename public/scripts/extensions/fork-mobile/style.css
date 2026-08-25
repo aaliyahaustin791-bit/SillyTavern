@@ -1,4 +1,136 @@
-/* Fork Mobile — foundation styles (v0.1.0) */
+/* Fork Mobile — foundation styles.
+   v0.2.0: FAB + bottom sheet + Phase 1 mobile overhaul. */
+
+/* ================= Phase 1 — Mobile overhaul =================
+   Gate: coarse pointer (touch) + viewport <= 1000px.
+   Matches mobileQuery in index.js. */
+
+@media (max-width: 1000px) and (pointer: coarse) {
+
+    /* PERF #1: kill every backdrop blur at once (26+ rules incl. #chat).
+       Blur forces GPU recomposite of the whole surface on every scroll
+       frame — the main source of mobile scroll/touch lag. */
+    :root {
+        --SmartThemeBlurStrength: 0;
+    }
+
+    body {
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Kill the double-tap-zoom delay on interactive elements. */
+    button,
+    a,
+    .interactable,
+    .mes_button,
+    .menu_button,
+    #send_but,
+    .stscript_btn {
+        touch-action: manipulation;
+    }
+
+    /* Chat reading: stable, readable type. */
+    #chat .mes_text {
+        font-size: 15.5px;
+        line-height: 1.55;
+    }
+
+    /* Wall-of-text fix: cap long messages; JS toggles these classes. */
+    .mes.mes-long-collapsed .mes_text {
+        max-height: 32dvh;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .mes-text-fade {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 72px;
+        background: linear-gradient(to top, var(--SmartThemeChatTintColor, #1e1e2e) 15%, transparent);
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    .mes.mes-long-collapsed .mes-text-fade {
+        display: block;
+    }
+
+    .mes-long-toggle {
+        display: none;
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 3;
+        padding: 8px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        background: rgba(90, 90, 120, 0.85);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+
+    .mes.mes-long-collapsed .mes-long-toggle,
+    .mes.mes-long-expanded .mes-long-toggle {
+        display: block;
+    }
+
+    /* Expanded: collapse pill floats top-right, out of the text flow. */
+    .mes.mes-long-expanded .mes-long-toggle {
+        left: auto;
+        right: 8px;
+        top: 8px;
+        bottom: auto;
+        transform: none;
+        padding: 6px 12px;
+        opacity: 0.75;
+    }
+
+    .mes.mes-long-expanded .mes-text-fade {
+        display: none;
+    }
+
+    /* Typing: cap the textarea so a long reply never eats the screen
+       (ST default is 50dvh — half the display). */
+    #send_textarea {
+        max-height: 28dvh !important;
+        resize: none;
+    }
+
+    /* Hide the FAB while the keyboard is up / composing. */
+    body:has(#send_textarea:focus) #fork-fab {
+        display: none;
+    }
+
+    /* Touch targets: primary controls >= 40px. */
+    .mes_button {
+        min-height: 40px;
+        min-width: 40px;
+    }
+
+    #send_form .interactable,
+    #send_form .stscript_btn {
+        min-height: 40px;
+        min-width: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Smoother scroll (iOS/WebView). */
+    #chat {
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ================= FAB + bottom sheet (all devices) ================= */
 
 /* Floating action button — thumb zone, bottom-right, safe-area aware */
 #fork-fab {
@@ -94,9 +226,4 @@
 .fork-sheet-sub {
     font-size: 12px;
     opacity: 0.65;
-}
-
-/* Mobile CSS hooks: scope future overhaul rules here */
-html[data-fork-mobile="1"] {
-    -webkit-text-size-adjust: 100%;
 }
