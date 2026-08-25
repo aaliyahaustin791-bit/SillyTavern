@@ -1,0 +1,102 @@
+/* Fork Mobile — foundation styles (v0.1.0) */
+
+/* Floating action button — thumb zone, bottom-right, safe-area aware */
+#fork-fab {
+    position: fixed;
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #fff;
+    background: linear-gradient(135deg, #8b5cf6, #d946ef);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45);
+    cursor: pointer;
+    z-index: 99999;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* Bottom sheet */
+#fork-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100000;
+}
+
+#fork-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100001;
+    background: var(--main-surface, #1e1e2e);
+    border-radius: 18px 18px 0 0;
+    padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.4);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.fork-hidden {
+    display: none !important;
+}
+
+.fork-sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 8px 4px 12px;
+    border-bottom: 1px solid var(--main-surface-tertiary, rgba(255, 255, 255, 0.08));
+}
+
+.fork-sheet-close {
+    background: none;
+    border: none;
+    color: var(--text, #cdd6f4);
+    font-size: 16px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.fork-sheet-list {
+    padding: 8px 0;
+}
+
+.fork-sheet-item {
+    padding: 12px 10px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fork-sheet-item:active {
+    background: var(--main-surface-tertiary, rgba(255, 255, 255, 0.08));
+}
+
+.fork-sheet-item.fork-disabled {
+    opacity: 0.45;
+}
+
+.fork-sheet-label {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.fork-sheet-sub {
+    font-size: 12px;
+    opacity: 0.65;
+}
+
+/* Mobile CSS hooks: scope future overhaul rules here */
+html[data-fork-mobile="1"] {
+    -webkit-text-size-adjust: 100%;
+}
