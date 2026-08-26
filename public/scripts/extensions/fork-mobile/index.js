@@ -128,89 +128,6 @@ function initLongMessages() {
     processLongMessages();
 }
 
-// --- Compose mode: hide overlay widgets while typing (JS-driven) ----------
-
-const COMPOSE_HIDE_SELECTORS = [
-    // RPG Companion (mobile — the real screen hog)
-    '.rpg-mobile-container',
-    '.rpg-mobile-overlay',
-    '.rpg-mobile-tabs',
-    '.rpg-mobile-tab-content',
-    '.rpg-content-box',
-    // RPG Companion (desktop)
-    '.rpg-panel',
-    // Multihog / RPG-tracker
-    '.rt-so-panel',
-    '.rpg-tracker-panel',
-    '.rpg-tracker-agent-panel',
-    '.rpg-tracker-delta-panel',
-    '.rpg-tracker-status-indicator',
-    '.rpg-tracker-prompt-bar',
-    '.rpg-tracker-nav',
-    '.rpg-tracker-delta-toolbar',
-    '.rt-rel-float',
-    '.rt-immersion-hero-overlay',
-    '.rt-npc-creator-panel',
-    '.rt-npc-portrait-gen-overlay',
-    '.rt-loc-image-gen-overlay',
-    '.rt-charpicker-overlay',
-    '.rt-benched-panel',
-    '.rt-settings-overlay',
-    '.rt-beta-unlock-overlay',
-];
-
-let composeObserver = null;
-
-function setComposeMode(hide) {
-    document.documentElement.dataset.forkComposing = hide ? '1' : '0';
-    const apply = () => {
-        for (const sel of COMPOSE_HIDE_SELECTORS) {
-            document.querySelectorAll(sel).forEach((node) => {
-                const el = /** @type {HTMLElement} */ (node);
-                if (hide) {
-                    el.style.setProperty('display', 'none', 'important');
-                } else {
-                    el.style.removeProperty('display');
-                }
-            });
-        }
-    };
-    apply();
-    if (hide && !composeObserver) {
-        composeObserver = new MutationObserver(() => apply());
-        composeObserver.observe(document.body, { childList: true, subtree: true });
-    } else if (!hide && composeObserver) {
-        composeObserver.disconnect();
-        composeObserver = null;
-    }
-}
-
-function initComposeMode() {
-    // focusin/out bubble (unlike focus/blur) — more reliable on mobile.
-    $(document).on('focusin.forkCompose', '#send_textarea', () => setComposeMode(true));
-    $(document).on('focusout.forkCompose', '#send_textarea', () => setComposeMode(false));
-    // Fallback poll: if the textarea stays focused without firing events,
-    // re-apply compose mode every 400ms. Cleared when not composing.
-    setInterval(() => {
-        if (document.activeElement?.id === 'send_textarea' && document.documentElement.dataset.forkComposing !== '1') {
-            setComposeMode(true);
-        }
-    }, 400);
-    setComposeMode(document.activeElement?.id === 'send_textarea');
-}
-
-// --- Manual compose-mode toggle (in case focus events fail on mobile) -----
-
-function buildComposeToggle() {
-    const btn = $('<div id="fork-compose-toggle" title="Toggle compose mode">⌨</div>');
-    $('body').append(btn);
-    btn.on('click', (e) => {
-        e.stopPropagation();
-        const next = document.documentElement.dataset.forkComposing !== '1';
-        setComposeMode(next);
-    });
-}
-
 // --- UI: floating action button + bottom sheet -----------------------------
 
 function buildFab() {
@@ -308,10 +225,8 @@ jQuery(async () => {
 
     applyMobileHooks();
     buildFab();
-    buildComposeToggle();
     addSettings();
     initLongMessages();
-    initComposeMode();
 
     console.log('[fork-mobile] active (v0.2.6)');
 });
@@ -321,8 +236,6 @@ export function init() {
     jQuery(async () => {
         applyMobileHooks();
         buildFab();
-        buildComposeToggle();
         initLongMessages();
-        initComposeMode();
     });
 }

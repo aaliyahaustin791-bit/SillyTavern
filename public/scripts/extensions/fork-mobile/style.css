@@ -97,16 +97,19 @@
         display: none;
     }
 
-    /* Typing: cap the textarea so a long reply never eats the screen
-       (ST default is 50dvh — half the display). */
+    /* Typing: keep the input TINY so the chat stays visible.
+       ST default is 50dvh — half the screen. We want ~4 lines max. */
     #send_textarea {
-        max-height: 28dvh !important;
-        resize: none;
+        min-height: 44px !important;
+        height: 44px !important;
+        max-height: 120px !important;
+        resize: none !important;
     }
 
-    /* Hide the FAB while the keyboard is up / composing. */
-    body:has(#send_textarea:focus) #fork-fab {
-        display: none;
+    /* When typing, let the textarea grow with content but stay bounded. */
+    body:has(#send_textarea:focus) #send_textarea {
+        height: auto !important;
+        max-height: 120px !important;
     }
 
     /* Touch targets: primary controls >= 40px. */
@@ -127,33 +130,6 @@
     /* Smoother scroll (iOS/WebView). */
     #chat {
         -webkit-overflow-scrolling: touch;
-    }
-
-    /* Compose mode: while the keyboard is open (textarea focused), hide the
-       Multihog / RPG-tracker overlay panels & meters that otherwise fill the
-       screen above the keyboard. They restore on blur. opacity/visibility (not
-       display:none) so the extension's own layout/measurement stays intact. */
-    body:has(#send_textarea:focus) .rpg-panel,
-    body:has(#send_textarea:focus) .rt-so-panel,
-    body:has(#send_textarea:focus) .rpg-tracker-panel,
-    body:has(#send_textarea:focus) .rpg-tracker-agent-panel,
-    body:has(#send_textarea:focus) .rpg-tracker-delta-panel,
-    body:has(#send_textarea:focus) .rpg-tracker-status-indicator,
-    body:has(#send_textarea:focus) .rpg-tracker-prompt-bar,
-    body:has(#send_textarea:focus) .rpg-tracker-nav,
-    body:has(#send_textarea:focus) .rpg-tracker-delta-toolbar,
-    body:has(#send_textarea:focus) .rt-rel-float,
-    body:has(#send_textarea:focus) .rt-immersion-hero-overlay,
-    body:has(#send_textarea:focus) .rt-npc-creator-panel,
-    body:has(#send_textarea:focus) .rt-npc-portrait-gen-overlay,
-    body:has(#send_textarea:focus) .rt-loc-image-gen-overlay,
-    body:has(#send_textarea:focus) .rt-charpicker-overlay,
-    body:has(#send_textarea:focus) .rt-benched-panel,
-    body:has(#send_textarea:focus) .rt-settings-overlay,
-    body:has(#send_textarea:focus) .rt-beta-unlock-overlay {
-        opacity: 0 !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
     }
 }
 
@@ -248,33 +224,4 @@
 .fork-sheet-label {
     font-size: 15px;
     font-weight: 500;
-}
-
-/* ================= Compose-mode toggle button ================= */
-
-#fork-compose-toggle {
-    position: fixed;
-    left: calc(16px + env(safe-area-inset-left));
-    bottom: calc(88px + env(safe-area-inset-bottom));
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    color: #fff;
-    background: var(--main-surface, #1e1e2e);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    cursor: pointer;
-    z-index: 99998;
-    user-select: none;
-    touch-action: manipulation;
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
-}
-
-/* When compose mode is active, highlight the toggle. */
-html[data-fork-composing="1"] #fork-compose-toggle {
-    background: linear-gradient(135deg, #8b5cf6, #d946ef);
-    border-color: transparent;
 }
