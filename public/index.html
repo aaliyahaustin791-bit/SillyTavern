@@ -16,6 +16,20 @@
         body {
             background-color: rgb(36, 36, 37);
         }
+        /* FORK-MOBILE: keep the send input TINY so the chat is visible.
+           Injected here directly (not via the extension loader) so it is
+           guaranteed to load on every page view regardless of caching. */
+        #send_textarea {
+            min-height: 44px !important;
+            height: 44px !important;
+            max-height: 120px !important;
+            resize: none !important;
+            field-sizing: normal !important;
+        }
+        body:has(#send_textarea:focus) #send_textarea {
+            height: auto !important;
+            max-height: 120px !important;
+        }
     </style>
     <link rel="preload" as="style" href="style.css">
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
