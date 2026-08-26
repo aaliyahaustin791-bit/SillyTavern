@@ -37,6 +37,33 @@
             flex-grow: 0 !important;
         }
     </style>
+    <script>
+        /* FORK-MOBILE DIAGNOSTIC (remove after): outline the tallest box and
+           label it so we can shrink the RIGHT element. */
+        (function () {
+            setTimeout(function () {
+                var cands = ['#send_textarea','#send_form','#form_sheld','#sheld','#chat','.rpg-panel','.rpg-mobile-container','.rpg-content-box'];
+                var best = null, bestH = 0, bestSel = '';
+                cands.forEach(function (sel) {
+                    var el = document.querySelector(sel);
+                    if (el) {
+                        var h = el.getBoundingClientRect().height;
+                        if (h > bestH) { bestH = h; best = el; bestSel = sel; }
+                    }
+                });
+                if (best) {
+                    best.style.outline = '3px solid magenta';
+                    var lbl = document.createElement('div');
+                    lbl.textContent = 'DIAG largest=' + bestSel + ' height=' + Math.round(bestH) + 'px';
+                    lbl.style.cssText = 'position:fixed;top:44px;left:8px;z-index:999999;background:#000;color:#0f0;font:bold 13px monospace;padding:5px 9px;border-radius:5px';
+                    document.body.appendChild(lbl);
+                    document.title = 'DIAG ' + bestSel + ' ' + Math.round(bestH);
+                } else {
+                    document.title = 'DIAG none';
+                }
+            }, 1600);
+        })();
+    </script>
     <link rel="preload" as="style" href="style.css">
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
     <link href="webfonts/NotoSans/stylesheet.css" rel="stylesheet">
