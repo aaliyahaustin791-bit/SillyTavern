@@ -131,7 +131,15 @@ function initLongMessages() {
 // --- Compose mode: hide overlay widgets while typing (JS-driven) ----------
 
 const COMPOSE_HIDE_SELECTORS = [
+    // RPG Companion (mobile — the real screen hog)
+    '.rpg-mobile-container',
+    '.rpg-mobile-overlay',
+    '.rpg-mobile-tabs',
+    '.rpg-mobile-tab-content',
+    '.rpg-content-box',
+    // RPG Companion (desktop)
     '.rpg-panel',
+    // Multihog / RPG-tracker
     '.rt-so-panel',
     '.rpg-tracker-panel',
     '.rpg-tracker-agent-panel',
@@ -155,11 +163,6 @@ let composeObserver = null;
 
 function setComposeMode(hide) {
     document.documentElement.dataset.forkComposing = hide ? '1' : '0';
-    // Visual debug: colored top border when composing is active.
-    document.documentElement.style.setProperty(
-        '--fork-compose-indicator',
-        hide ? '2px solid #d946ef' : '0px solid transparent',
-    );
     const apply = () => {
         for (const sel of COMPOSE_HIDE_SELECTORS) {
             document.querySelectorAll(sel).forEach((node) => {
@@ -276,7 +279,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.5 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.6 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -310,7 +313,7 @@ jQuery(async () => {
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.5)');
+    console.log('[fork-mobile] active (v0.2.6)');
 });
 
 export function init() {
