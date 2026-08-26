@@ -12,11 +12,34 @@ const defaultSettings = {
     collapseLong: true,
 };
 
-// --- Critical CSS (injected as a <style> tag) ------------------------------
+// --- Compose mode: toggle an attribute while typing (no hiding) -----------
+// When the keyboard is open (textarea focused) we set data-fork-composing="1"
+// on <html>. CSS then SHRINKS the full-screen tracker panel into a compact
+// corner widget so the chat is visible — the panel is never hidden.
+
+let composeObserver = null;
+
+function setComposing(on) {
+    document.documentElement.dataset.forkComposing = on ? '1' : '0';
+}
+
+function initComposeMode() {
+    // focusin/out bubble (unlike focus/blur) — reliable on mobile.
+    $(document).on('focusin.forkCompose', '#send_textarea', () => setComposing(true));
+    $(document).on('focusout.forkCompose', '#send_textarea', () => setComposing(false));
+    // Fallback poll in case focus events don't fire.
+    setInterval(() => {
+        const focused = document.activeElement?.id === 'send_textarea';
+        if (focused !== (document.documentElement.dataset.forkComposing === '1')) {
+            setComposing(focused);
+        }
+    }, 400);
+    setComposing(document.activeElement?.id === 'send_textarea');
+}
+
 // Belt-and-suspenders: these rules are ALSO in style-v029.css, but we inject
 // them directly so the input shrink + mobile hooks apply even if the external
-// stylesheet is ever stale-cached or fails to load. This is what actually
-// fixes "the input box swallows the whole screen when the keyboard is open."
+// stylesheet is ever stale-cached or fails to load.
 
 function injectCriticalCss() {
     const id = 'fork-mobile-critical';
@@ -32,6 +55,39 @@ function injectCriticalCss() {
         body:has(#send_textarea:focus) #send_textarea {
             height: auto !important;
             max-height: 120px !important;
+        }
+        /* While typing, dock the full-screen tracker overlay into a compact
+           bottom-left corner widget so the chat is visible. The panel is NOT
+           hidden — only the overlay's full-screen dim + centering is lifted,
+           and only the small panel remains interactive. */
+        html[data-fork-composing="1"] .rt-settings-overlay {
+            position: fixed !important;
+            inset: auto auto 8px 8px !important;
+            padding: 0 !important;
+            display: block !important;
+            align-items: initial !important;
+            justify-content: initial !important;
+            width: auto !important;
+            height: auto !important;
+            pointer-events: none !important;
+        }
+        html[data-fork-composing="1"] .rt-settings-overlay .rt-so-panel {
+            width: min(280px, 42vw) !important;
+            height: 260px !important;
+            max-height: 260px !important;
+            pointer-events: auto !important;
+        }
+        html[data-fork-composing="1"] .rt-settings-overlay .rt-so-dim {
+            display: none !important;
+        }
+        html[data-fork-composing="1"] .rpg-tracker-panel {
+            inset: auto auto 8px 8px !important;
+            top: auto !important;
+            right: auto !important;
+            width: min(280px, 42vw) !important;
+            height: 260px !important;
+            max-height: 260px !important;
+            z-index: 1999 !important;
         }
     `;
     const style = document.createElement('style');
@@ -224,7 +280,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.8 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.10 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -256,8 +312,9 @@ jQuery(async () => {
     buildFab();
     addSettings();
     initLongMessages();
+    initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.9)');
+    console.log('[fork-mobile] active (v0.2.10)');
 });
 
 export function init() {
@@ -267,5 +324,6 @@ export function init() {
         applyMobileHooks();
         buildFab();
         initLongMessages();
+        initComposeMode();
     });
 }
