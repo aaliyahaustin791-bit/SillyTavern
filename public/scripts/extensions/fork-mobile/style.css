@@ -128,6 +128,32 @@
     #chat {
         -webkit-overflow-scrolling: touch;
     }
+
+    /* Compose mode: while the keyboard is open (textarea focused), hide the
+       Multihog / RPG-tracker overlay panels & meters that otherwise fill the
+       screen above the keyboard. They restore on blur. opacity/visibility (not
+       display:none) so the extension's own layout/measurement stays intact. */
+    body:has(#send_textarea:focus) .rt-so-panel,
+    body:has(#send_textarea:focus) .rpg-tracker-panel,
+    body:has(#send_textarea:focus) .rpg-tracker-agent-panel,
+    body:has(#send_textarea:focus) .rpg-tracker-delta-panel,
+    body:has(#send_textarea:focus) .rpg-tracker-status-indicator,
+    body:has(#send_textarea:focus) .rpg-tracker-prompt-bar,
+    body:has(#send_textarea:focus) .rpg-tracker-nav,
+    body:has(#send_textarea:focus) .rpg-tracker-delta-toolbar,
+    body:has(#send_textarea:focus) .rt-rel-float,
+    body:has(#send_textarea:focus) .rt-immersion-hero-overlay,
+    body:has(#send_textarea:focus) .rt-npc-creator-panel,
+    body:has(#send_textarea:focus) .rt-npc-portrait-gen-overlay,
+    body:has(#send_textarea:focus) .rt-loc-image-gen-overlay,
+    body:has(#send_textarea:focus) .rt-charpicker-overlay,
+    body:has(#send_textarea:focus) .rt-benched-panel,
+    body:has(#send_textarea:focus) .rt-settings-overlay,
+    body:has(#send_textarea:focus) .rt-beta-unlock-overlay {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
 }
 
 /* ================= FAB + bottom sheet (all devices) ================= */
