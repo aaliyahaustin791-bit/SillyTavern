@@ -1,6 +1,6 @@
 // Fork Mobile — foundation extension for the SillyTavern mobile+agents fork.
-// v0.2.0: FAB + bottom sheet launcher, mobile CSS hooks, Phase 1 overhaul
-// (long-message collapse, typing-time input cap).
+// v0.2.1: FAB + bottom sheet launcher, mobile CSS hooks, Phase 1 overhaul
+// (long-message collapse w/ keyboard-aware resizing, typing input cap).
 
 import { extension_settings } from '../../extensions.js';
 import { eventSource, event_types, saveSettingsDebounced } from '../../../script.js';
@@ -25,13 +25,24 @@ function applyMobileHooks() {
 
 // --- Phase 1: long-message collapse (wall-of-text fix) ---------------------
 
+// Messages the typing mode auto-collapsed, so we can restore them on blur.
+const autoCollapsedWhileTyping = new Set();
+
+function getViewportHeight() {
+    // visualViewport is the reliable keyboard signal on Android: its height
+    // shrinks when the keyboard opens even when the layout viewport doesn't.
+    return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+}
+
 function processLongMessages() {
     if (!mobileQuery.matches || !extension_settings[extensionName].collapseLong) {
         return;
     }
 
+    const vh = getViewportHeight();
     const typing = document.activeElement?.id === 'send_textarea';
-    const threshold = window.innerHeight * (typing ? 0.3 : 0.55);
+    const threshold = vh * (typing ? 0.32 : 0.55);
+    const capPx = Math.round(vh * 0.32);
 
     $('#chat .mes').each(function () {
         const $mes = $(this);
@@ -40,10 +51,40 @@ function processLongMessages() {
             return;
         }
 
-        if ($text[0].scrollHeight > threshold) {
-            if (!$mes.hasClass('mes-long-collapsed') && !$mes.hasClass('mes-long-expanded')) {
+        const h = $text[0].scrollHeight;
+
+        if (h > threshold) {
+            if ($mes.hasClass('mes-long-expanded')) {
+                // Keyboard space is precious: pull expanded long messages
+                // back to collapsed while typing, restore on blur.
+                if (typing) {
+                    $mes.addClass('mes-long-collapsed').removeClass('mes-long-expanded');
+                    autoCollapsedWhileTyping.add($mes[0]);
+                    if (!$text.find('.mes-long-toggle').length) {
+                        $text.append('<div class="mes-text-fade"></div><div class="mes-long-toggle">⤓ more</div>');
+                    }
+                    $text.css('max-height', capPx + 'px');
+                }
+                return;
+            }
+
+            if (!$mes.hasClass('mes-long-collapsed')) {
                 $mes.addClass('mes-long-collapsed');
                 $text.append('<div class="mes-text-fade"></div><div class="mes-long-toggle">⤓ more</div>');
+            }
+            // Inline px cap beats the CSS dvh fallback and tracks the keyboard.
+            $text.css('max-height', capPx + 'px');
+        } else if (!$mes.hasClass('mes-long-expanded')) {
+            // Below threshold again (keyboard closed / shorter message).
+            if (autoCollapsedWhileTyping.has($mes[0])) {
+                autoCollapsedWhileTyping.delete($mes[0]);
+                $mes.addClass('mes-long-expanded').removeClass('mes-long-collapsed');
+                $text.find('.mes-text-fade, .mes-long-toggle').remove();
+                $text.css('max-height', '');
+            } else if (!$mes.hasClass('mes-long-manual')) {
+                $mes.removeClass('mes-long-collapsed');
+                $text.find('.mes-text-fade, .mes-long-toggle').remove();
+                $text.css('max-height', '');
             }
         }
     });
@@ -58,11 +99,12 @@ function initLongMessages() {
     $(document).off('click.forkLong').on('click.forkLong', '.mes-long-toggle', function (e) {
         e.stopPropagation();
         const $mes = $(this).closest('.mes');
+        autoCollapsedWhileTyping.delete($mes[0]);
         if ($mes.hasClass('mes-long-collapsed')) {
-            $mes.removeClass('mes-long-collapsed').addClass('mes-long-expanded');
+            $mes.removeClass('mes-long-collapsed mes-long-manual').addClass('mes-long-expanded');
             $(this).text('⤒ collapse');
         } else {
-            $mes.removeClass('mes-long-expanded').addClass('mes-long-collapsed');
+            $mes.addClass('mes-long-collapsed mes-long-manual');
             $(this).text('⤓ more');
         }
     });
@@ -72,6 +114,17 @@ function initLongMessages() {
     eventSource.on(event_types.MESSAGE_SWIPED, processLongMessages);
     eventSource.on(event_types.MESSAGE_EDITED, processLongMessages);
     eventSource.on(event_types.CHAT_CHANGED, processLongMessages);
+
+    // Keyboard open/close re-evaluation (visualViewport fires on Android
+    // even when the layout viewport doesn't resize).
+    let resizeTimer = null;
+    const onViewportChange = () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(processLongMessages, 120);
+    };
+    window.visualViewport?.addEventListener('resize', onViewportChange);
+    $('#send_textarea').on('focus blur', onViewportChange);
+
     processLongMessages();
 }
 
@@ -143,7 +196,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.0 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.1 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -175,7 +228,7 @@ jQuery(async () => {
     addSettings();
     initLongMessages();
 
-    console.log('[fork-mobile] active (v0.2.0)');
+    console.log('[fork-mobile] active (v0.2.1)');
 });
 
 export function init() {
