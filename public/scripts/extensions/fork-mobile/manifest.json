@@ -3,10 +3,10 @@
     "loading_order": 100,
     "requires": [],
     "optional": [],
-    "js": "index.js",
-    "css": "style.css",
+    "js": "index-v029.js",
+    "css": "style-v029.css",
     "author": "aaliyahaustin791",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "homePage": "https://github.com/aaliyahaustin791-bit/SillyTavern",
     "hooks": {
         "activate": "init"

@@ -12,6 +12,34 @@ const defaultSettings = {
     collapseLong: true,
 };
 
+// --- Critical CSS (injected as a <style> tag) ------------------------------
+// Belt-and-suspenders: these rules are ALSO in style-v029.css, but we inject
+// them directly so the input shrink + mobile hooks apply even if the external
+// stylesheet is ever stale-cached or fails to load. This is what actually
+// fixes "the input box swallows the whole screen when the keyboard is open."
+
+function injectCriticalCss() {
+    const id = 'fork-mobile-critical';
+    if (document.getElementById(id)) return;
+    const css = `
+        #send_textarea {
+            min-height: 44px !important;
+            height: 44px !important;
+            max-height: 120px !important;
+            resize: none !important;
+            field-sizing: normal !important;
+        }
+        body:has(#send_textarea:focus) #send_textarea {
+            height: auto !important;
+            max-height: 120px !important;
+        }
+    `;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = css;
+    document.head.appendChild(style);
+}
+
 // Mirrors the CSS gate in style.css: coarse pointer + narrow viewport.
 const mobileQuery = window.matchMedia('(max-width: 1000px) and (pointer: coarse)');
 
@@ -223,17 +251,19 @@ jQuery(async () => {
         saveSettingsDebounced();
     }
 
+    injectCriticalCss();
     applyMobileHooks();
     buildFab();
     addSettings();
     initLongMessages();
 
-    console.log('[fork-mobile] active (v0.2.8)');
+    console.log('[fork-mobile] active (v0.2.9)');
 });
 
 export function init() {
     // Re-run when the extension is toggled on.
     jQuery(async () => {
+        injectCriticalCss();
         applyMobileHooks();
         buildFab();
         initLongMessages();
