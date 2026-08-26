@@ -13,11 +13,12 @@
     field-sizing: normal !important;
 }
 
-/* When typing, let the textarea grow with content but stay bounded. */
-body:has(#send_textarea:focus) #send_textarea {
-    height: auto !important;
-    max-height: 120px !important;
-}
+/* v0.2.12: REMOVED the old grow-on-focus rule
+   (body:has(#send_textarea:focus) { height:auto }) — unpinning the 44px
+   box while typing made the field warp: it grew with the draft, expanded
+   the form's footprint, hid the send button, clipped the chip row, and
+   overlapped the chat above. The input stays pinned at 44px in ALL
+   states; long drafts scroll inside the box. */
 
 /* ================= Phase 1 — Mobile overhaul =================
    Gate: coarse pointer (touch) + viewport <= 1000px.
