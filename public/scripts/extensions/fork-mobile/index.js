@@ -155,6 +155,11 @@ let composeObserver = null;
 
 function setComposeMode(hide) {
     document.documentElement.dataset.forkComposing = hide ? '1' : '0';
+    // Visual debug: colored top border when composing is active.
+    document.documentElement.style.setProperty(
+        '--fork-compose-indicator',
+        hide ? '2px solid #d946ef' : '0px solid transparent',
+    );
     const apply = () => {
         for (const sel of COMPOSE_HIDE_SELECTORS) {
             document.querySelectorAll(sel).forEach((node) => {
@@ -168,8 +173,6 @@ function setComposeMode(hide) {
         }
     };
     apply();
-    // Extensions may re-render their panels while we're composing
-    // (generation events, resize). Keep re-hiding new nodes until blur.
     if (hide && !composeObserver) {
         composeObserver = new MutationObserver(() => apply());
         composeObserver.observe(document.body, { childList: true, subtree: true });
@@ -180,9 +183,29 @@ function setComposeMode(hide) {
 }
 
 function initComposeMode() {
-    $('#send_textarea').on('focus', () => setComposeMode(true));
-    $('#send_textarea').on('blur', () => setComposeMode(false));
+    // focusin/out bubble (unlike focus/blur) — more reliable on mobile.
+    $(document).on('focusin.forkCompose', '#send_textarea', () => setComposeMode(true));
+    $(document).on('focusout.forkCompose', '#send_textarea', () => setComposeMode(false));
+    // Fallback poll: if the textarea stays focused without firing events,
+    // re-apply compose mode every 400ms. Cleared when not composing.
+    setInterval(() => {
+        if (document.activeElement?.id === 'send_textarea' && document.documentElement.dataset.forkComposing !== '1') {
+            setComposeMode(true);
+        }
+    }, 400);
     setComposeMode(document.activeElement?.id === 'send_textarea');
+}
+
+// --- Manual compose-mode toggle (in case focus events fail on mobile) -----
+
+function buildComposeToggle() {
+    const btn = $('<div id="fork-compose-toggle" title="Toggle compose mode">⌨</div>');
+    $('body').append(btn);
+    btn.on('click', (e) => {
+        e.stopPropagation();
+        const next = document.documentElement.dataset.forkComposing !== '1';
+        setComposeMode(next);
+    });
 }
 
 // --- UI: floating action button + bottom sheet -----------------------------
@@ -253,7 +276,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.3 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.5 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -282,11 +305,12 @@ jQuery(async () => {
 
     applyMobileHooks();
     buildFab();
+    buildComposeToggle();
     addSettings();
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.4)');
+    console.log('[fork-mobile] active (v0.2.5)');
 });
 
 export function init() {
@@ -294,6 +318,7 @@ export function init() {
     jQuery(async () => {
         applyMobileHooks();
         buildFab();
+        buildComposeToggle();
         initLongMessages();
         initComposeMode();
     });
