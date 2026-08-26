@@ -1,6 +1,24 @@
 /* Fork Mobile — foundation styles.
    v0.2.0: FAB + bottom sheet + Phase 1 mobile overhaul. */
 
+/* ================= Input bar — ALL devices =================
+   Shrink #send_textarea so the chat stays visible while typing.
+   ST default is 50dvh (half the screen) + field-sizing: content (auto-grow).
+   We cap it to ~4 lines max. !important overrides ST's defaults. */
+#send_textarea {
+    min-height: 44px !important;
+    height: 44px !important;
+    max-height: 120px !important;
+    resize: none !important;
+    field-sizing: normal !important;
+}
+
+/* When typing, let the textarea grow with content but stay bounded. */
+body:has(#send_textarea:focus) #send_textarea {
+    height: auto !important;
+    max-height: 120px !important;
+}
+
 /* ================= Phase 1 — Mobile overhaul =================
    Gate: coarse pointer (touch) + viewport <= 1000px.
    Matches mobileQuery in index.js. */
@@ -95,21 +113,6 @@
 
     .mes.mes-long-expanded .mes-text-fade {
         display: none;
-    }
-
-    /* Typing: keep the input TINY so the chat stays visible.
-       ST default is 50dvh — half the screen. We want ~4 lines max. */
-    #send_textarea {
-        min-height: 44px !important;
-        height: 44px !important;
-        max-height: 120px !important;
-        resize: none !important;
-    }
-
-    /* When typing, let the textarea grow with content but stay bounded. */
-    body:has(#send_textarea:focus) #send_textarea {
-        height: auto !important;
-        max-height: 120px !important;
     }
 
     /* Touch targets: primary controls >= 40px. */

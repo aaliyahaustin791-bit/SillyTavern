@@ -196,7 +196,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.6 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.8 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -228,7 +228,7 @@ jQuery(async () => {
     addSettings();
     initLongMessages();
 
-    console.log('[fork-mobile] active (v0.2.6)');
+    console.log('[fork-mobile] active (v0.2.8)');
 });
 
 export function init() {
