@@ -131,6 +131,7 @@ function initLongMessages() {
 // --- Compose mode: hide overlay widgets while typing (JS-driven) ----------
 
 const COMPOSE_HIDE_SELECTORS = [
+    '.rpg-panel',
     '.rt-so-panel',
     '.rpg-tracker-panel',
     '.rpg-tracker-agent-panel',
@@ -150,17 +151,31 @@ const COMPOSE_HIDE_SELECTORS = [
     '.rt-beta-unlock-overlay',
 ];
 
+let composeObserver = null;
+
 function setComposeMode(hide) {
     document.documentElement.dataset.forkComposing = hide ? '1' : '0';
-    for (const sel of COMPOSE_HIDE_SELECTORS) {
-        document.querySelectorAll(sel).forEach((node) => {
-            const el = node;
-            if (hide) {
-                el.style.setProperty('display', 'none', 'important');
-            } else {
-                el.style.removeProperty('display');
-            }
-        });
+    const apply = () => {
+        for (const sel of COMPOSE_HIDE_SELECTORS) {
+            document.querySelectorAll(sel).forEach((node) => {
+                const el = /** @type {HTMLElement} */ (node);
+                if (hide) {
+                    el.style.setProperty('display', 'none', 'important');
+                } else {
+                    el.style.removeProperty('display');
+                }
+            });
+        }
+    };
+    apply();
+    // Extensions may re-render their panels while we're composing
+    // (generation events, resize). Keep re-hiding new nodes until blur.
+    if (hide && !composeObserver) {
+        composeObserver = new MutationObserver(() => apply());
+        composeObserver.observe(document.body, { childList: true, subtree: true });
+    } else if (!hide && composeObserver) {
+        composeObserver.disconnect();
+        composeObserver = null;
     }
 }
 
@@ -271,7 +286,7 @@ jQuery(async () => {
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.3)');
+    console.log('[fork-mobile] active (v0.2.4)');
 });
 
 export function init() {

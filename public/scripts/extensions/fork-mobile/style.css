@@ -133,6 +133,7 @@
        Multihog / RPG-tracker overlay panels & meters that otherwise fill the
        screen above the keyboard. They restore on blur. opacity/visibility (not
        display:none) so the extension's own layout/measurement stays intact. */
+    body:has(#send_textarea:focus) .rpg-panel,
     body:has(#send_textarea:focus) .rt-so-panel,
     body:has(#send_textarea:focus) .rpg-tracker-panel,
     body:has(#send_textarea:focus) .rpg-tracker-agent-panel,
