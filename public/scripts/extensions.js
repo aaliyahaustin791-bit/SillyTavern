@@ -784,7 +784,7 @@ function addExtensionStyle(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        const url = `/scripts/extensions/${name}/${manifest.css}`;
+        const url = `/scripts/extensions/${name}/${manifest.css}?v=${manifest.version ?? ''}`;
         const id = sanitizeSelector(`${name}-css`);
 
         if ($(`link[id="${id}"]`).length === 0) {
@@ -816,7 +816,7 @@ function addExtensionScript(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        const url = `/scripts/extensions/${name}/${manifest.js}`;
+        const url = `/scripts/extensions/${name}/${manifest.js}?v=${manifest.version ?? ''}`;
         const id = sanitizeSelector(`${name}-js`);
         let ready = false;
 

@@ -128,6 +128,48 @@ function initLongMessages() {
     processLongMessages();
 }
 
+// --- Compose mode: hide overlay widgets while typing (JS-driven) ----------
+
+const COMPOSE_HIDE_SELECTORS = [
+    '.rt-so-panel',
+    '.rpg-tracker-panel',
+    '.rpg-tracker-agent-panel',
+    '.rpg-tracker-delta-panel',
+    '.rpg-tracker-status-indicator',
+    '.rpg-tracker-prompt-bar',
+    '.rpg-tracker-nav',
+    '.rpg-tracker-delta-toolbar',
+    '.rt-rel-float',
+    '.rt-immersion-hero-overlay',
+    '.rt-npc-creator-panel',
+    '.rt-npc-portrait-gen-overlay',
+    '.rt-loc-image-gen-overlay',
+    '.rt-charpicker-overlay',
+    '.rt-benched-panel',
+    '.rt-settings-overlay',
+    '.rt-beta-unlock-overlay',
+];
+
+function setComposeMode(hide) {
+    document.documentElement.dataset.forkComposing = hide ? '1' : '0';
+    for (const sel of COMPOSE_HIDE_SELECTORS) {
+        document.querySelectorAll(sel).forEach((node) => {
+            const el = node;
+            if (hide) {
+                el.style.setProperty('display', 'none', 'important');
+            } else {
+                el.style.removeProperty('display');
+            }
+        });
+    }
+}
+
+function initComposeMode() {
+    $('#send_textarea').on('focus', () => setComposeMode(true));
+    $('#send_textarea').on('blur', () => setComposeMode(false));
+    setComposeMode(document.activeElement?.id === 'send_textarea');
+}
+
 // --- UI: floating action button + bottom sheet -----------------------------
 
 function buildFab() {
@@ -196,7 +238,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.2 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.3 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -227,8 +269,9 @@ jQuery(async () => {
     buildFab();
     addSettings();
     initLongMessages();
+    initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.2)');
+    console.log('[fork-mobile] active (v0.2.3)');
 });
 
 export function init() {
@@ -237,5 +280,6 @@ export function init() {
         applyMobileHooks();
         buildFab();
         initLongMessages();
+        initComposeMode();
     });
 }
