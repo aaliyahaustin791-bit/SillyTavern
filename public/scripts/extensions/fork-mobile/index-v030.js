@@ -186,6 +186,9 @@ function initLongMessages() {
         autoCollapsedWhileTyping.delete($mes[0]);
         if ($mes.hasClass('mes-long-collapsed')) {
             $mes.removeClass('mes-long-collapsed mes-long-manual').addClass('mes-long-expanded');
+            // Clear the inline px cap set at collapse time. Inline styles beat
+            // stylesheet rules, so without this the text stays cropped forever.
+            $mes.find('.mes_text').css('max-height', '');
             $(this).text('⤒ collapse');
         } else {
             $mes.addClass('mes-long-collapsed mes-long-manual');
@@ -280,7 +283,7 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.10 (Phase 1: mobile overhaul)</small>
+            <small>Fork Mobile — v0.2.11 (Phase 1: mobile overhaul)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);

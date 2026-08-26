@@ -115,6 +115,14 @@ body:has(#send_textarea:focus) #send_textarea {
         display: none;
     }
 
+    /* Expanded must beat any stale inline max-height (set while collapsed)
+       and re-anchor the pill to the text block instead of a distant
+       ancestor, or it vanishes out of view. */
+    .mes.mes-long-expanded .mes_text {
+        position: relative;
+        max-height: none !important;
+    }
+
     /* Touch targets: primary controls >= 40px. */
     .mes_button {
         min-height: 40px;
