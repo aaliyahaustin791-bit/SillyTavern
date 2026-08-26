@@ -124,17 +124,6 @@
         body:has(#send_textarea:focus) .gg-action-buttons-container {
             display: none !important;
         }
-        /* Keep the send button on-screen (its row is the last child of the
-           form) and never let the input strip force the page wider than the
-           viewport. */
-        #send_form,
-        #nonQRFormItems {
-            max-width: 100% !important;
-            overflow-x: hidden !important;
-        }
-        #nonQRFormItems {
-            order: 100 !important;
-        }
     </style>
     <link rel="preload" as="style" href="style.css">
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
