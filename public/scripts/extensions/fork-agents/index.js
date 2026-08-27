@@ -185,17 +185,27 @@ async function runAgent(agent, input, { skipInput = false } = {}) {
 
 // Module-level open/close: the button in settings binds directly to these, and
 // fork-mobile's FAB dispatches 'fork-launch-agents' which calls openAgentsLauncher.
+// NOTE: we set inline styles (not just class toggles) so no stale/cached CSS,
+// class mismatch, or !important war can hide the sheets.
 function openAgentsLauncher() {
     if (!settings().enabled) {
         toastr.warning('Helper Agents are disabled in extension settings.');
         return;
     }
+    const launcher = document.getElementById('fa-launcher');
+    const backdrop = document.getElementById('fa-backdrop');
+    if (launcher) { launcher.style.display = 'flex'; launcher.style.zIndex = '100002'; }
+    if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
     $('#fa-launcher').removeClass('fa-hidden');
     $('#fa-backdrop').removeClass('fa-hidden');
-    console.log('[fork-agents] launcher opened', { launcher: $('#fa-launcher').length, backdrop: $('#fa-backdrop').length });
+    console.log('[fork-agents] launcher opened', { launcher: !!launcher, backdrop: !!backdrop });
 }
 
 function closeAgentsLauncher() {
+    const launcher = document.getElementById('fa-launcher');
+    const backdrop = document.getElementById('fa-backdrop');
+    if (launcher) launcher.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
     $('#fa-launcher').addClass('fa-hidden');
     $('#fa-backdrop').addClass('fa-hidden');
 }
@@ -304,6 +314,10 @@ const panel = {
     close() {
         $('#fa-panel').addClass('fa-hidden');
         $('#fa-backdrop').addClass('fa-hidden');
+        const panelEl = document.getElementById('fa-panel');
+        const backdrop = document.getElementById('fa-backdrop');
+        if (panelEl) panelEl.style.display = 'none';
+        if (backdrop) backdrop.style.display = 'none';
         this.agent = null;
         this.result = null;
     },
@@ -312,6 +326,10 @@ const panel = {
         $('#fa-panel-header-title').text(this.agent?.icon ? `${this.agent.icon} ${this.agent.name}` : 'Helper Agent');
         $('#fa-panel').removeClass('fa-hidden');
         $('#fa-backdrop').removeClass('fa-hidden');
+        const panelEl = document.getElementById('fa-panel');
+        const backdrop = document.getElementById('fa-backdrop');
+        if (panelEl) { panelEl.style.display = 'flex'; panelEl.style.zIndex = '100002'; }
+        if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
     },
 
     _setFooter(actions) {
