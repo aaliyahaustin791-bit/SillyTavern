@@ -209,13 +209,14 @@ async function runAgent(agent, input, { skipInput = false } = {}) {
 // fork-mobile's FAB dispatches 'fork-launch-agents' which calls openAgentsLauncher.
 // NOTE: we set inline styles (not just class toggles) so no stale/cached CSS,
 // class mismatch, or !important war can hide the sheets.
-function openAgentsLauncher() {
+async function openAgentsLauncher() {
     const s = settings();
     if (!s || !s.enabled) {
         toastr.warning('Helper Agents are disabled in extension settings.');
         return;
     }
     try {
+        await ensureCss();
         let launcher = document.getElementById('fa-launcher');
         let backdrop = document.getElementById('fa-backdrop');
         if (!launcher || !backdrop) {
@@ -223,8 +224,23 @@ function openAgentsLauncher() {
             launcher = document.getElementById('fa-launcher');
             backdrop = document.getElementById('fa-backdrop');
         }
-        if (launcher) { launcher.style.display = 'flex'; launcher.style.zIndex = '100002'; }
-        if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
+        // ALL critical styles inline — position:fixed is the crucial one:
+        // z-index is ignored on a static element, which would leave the sheet
+        // in document flow at the end of body (below the fold, invisible).
+        if (launcher) {
+            launcher.style.position = 'fixed';
+            launcher.style.left = '0';
+            launcher.style.right = '0';
+            launcher.style.bottom = '0';
+            launcher.style.display = 'flex';
+            launcher.style.zIndex = '100002';
+        }
+        if (backdrop) {
+            backdrop.style.position = 'fixed';
+            backdrop.style.inset = '0';
+            backdrop.style.display = 'block';
+            backdrop.style.zIndex = '100001';
+        }
         $('#fa-launcher').removeClass('fa-hidden');
         $('#fa-backdrop').removeClass('fa-hidden');
         toastr.success(`Launcher ${launcher ? 'OK' : 'MISSING'} · Backdrop ${backdrop ? 'OK' : 'MISSING'}`);
@@ -362,8 +378,20 @@ const panel = {
         $('#fa-backdrop').removeClass('fa-hidden');
         const panelEl = document.getElementById('fa-panel');
         const backdrop = document.getElementById('fa-backdrop');
-        if (panelEl) { panelEl.style.display = 'flex'; panelEl.style.zIndex = '100002'; }
-        if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
+        if (panelEl) {
+            panelEl.style.position = 'fixed';
+            panelEl.style.left = '0';
+            panelEl.style.right = '0';
+            panelEl.style.bottom = '0';
+            panelEl.style.display = 'flex';
+            panelEl.style.zIndex = '100002';
+        }
+        if (backdrop) {
+            backdrop.style.position = 'fixed';
+            backdrop.style.inset = '0';
+            backdrop.style.display = 'block';
+            backdrop.style.zIndex = '100001';
+        }
     },
 
     _setFooter(actions) {
