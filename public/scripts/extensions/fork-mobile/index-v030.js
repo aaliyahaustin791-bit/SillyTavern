@@ -74,17 +74,26 @@ function injectCriticalCss() {
         }
         #fork-sheet {
             position: fixed !important;
+            /* Top-anchored with vh — bottom:0 renders above the viewport in
+               this environment (see containing-block saga). */
+            top: 0 !important;
+            bottom: auto !important;
             left: 0 !important;
             right: 0 !important;
-            bottom: 0 !important;
+            height: min(74vh, 540px) !important;
             z-index: 100001 !important;
             background: var(--main-surface, #1e1e2e) !important;
-            border-radius: 18px 18px 0 0 !important;
-            padding: 10px 16px calc(16px + env(safe-area-inset-bottom)) !important;
+            border-radius: 0 0 18px 18px !important;
+            padding: 10px 16px 16px !important;
+            overflow-y: auto !important;
         }
         #fork-backdrop {
             position: fixed !important;
-            inset: 0 !important;
+            top: 0 !important;
+            bottom: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 100vh !important;
             background: rgba(0, 0, 0, 0.55) !important;
             z-index: 100000 !important;
         }
@@ -337,6 +346,29 @@ function buildFab() {
     sheet.append(header, list);
 
     const open = () => {
+        // Inline critical positioning (top-anchored, viewport units) so the
+        // sheet CANNOT render off-screen even if stylesheets fail or the
+        // containing block is hijacked.
+        const sEl = sheet[0];
+        const bEl = backdrop[0];
+        if (sEl) {
+            sEl.style.position = 'fixed';
+            sEl.style.top = '0';
+            sEl.style.bottom = 'auto';
+            sEl.style.left = '0';
+            sEl.style.right = '0';
+            sEl.style.height = 'min(74vh, 540px)';
+            sEl.style.zIndex = '100001';
+        }
+        if (bEl) {
+            bEl.style.position = 'fixed';
+            bEl.style.top = '0';
+            bEl.style.bottom = 'auto';
+            bEl.style.left = '0';
+            bEl.style.right = '0';
+            bEl.style.height = '100vh';
+            bEl.style.zIndex = '100000';
+        }
         sheet.removeClass('fork-hidden');
         backdrop.removeClass('fork-hidden');
     };
