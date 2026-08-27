@@ -45,6 +45,43 @@ function injectCriticalCss() {
     const id = 'fork-mobile-critical';
     if (document.getElementById(id)) return;
     const css = `
+        /* Critical FAB/sheet positioning — must not depend on style-v030.css
+           loading: if the stylesheet is stale or refused, the FAB would render
+           as an unstyled div at the end of body (below the fold, invisible). */
+        #fork-fab {
+            position: fixed !important;
+            right: calc(16px + env(safe-area-inset-right)) !important;
+            bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+            width: 56px !important;
+            height: 56px !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 22px !important;
+            color: #fff !important;
+            background: linear-gradient(135deg, #8b5cf6, #d946ef) !important;
+            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45) !important;
+            cursor: pointer !important;
+            z-index: 99999 !important;
+            user-select: none !important;
+        }
+        #fork-sheet {
+            position: fixed !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            z-index: 100001 !important;
+            background: var(--main-surface, #1e1e2e) !important;
+            border-radius: 18px 18px 0 0 !important;
+            padding: 10px 16px calc(16px + env(safe-area-inset-bottom)) !important;
+        }
+        #fork-backdrop {
+            position: fixed !important;
+            inset: 0 !important;
+            background: rgba(0, 0, 0, 0.55) !important;
+            z-index: 100000 !important;
+        }
         #send_textarea {
             min-height: 44px !important;
             height: 44px !important;

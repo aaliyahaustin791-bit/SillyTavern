@@ -90,6 +90,28 @@ function fallbackCopy(text, done) {
     ta.remove();
 }
 
+// --- CSS self-loading ---------------------------------------------------------
+// Belt-and-suspenders: fetch our own stylesheet and inject it as an inline
+// <style> at boot. If addExtensionStyle's <link> ever fails or the browser
+// refuses it, the sheets still get their positioning/visibility rules, so the
+// launcher can NEVER render as an unstyled block below the fold.
+
+async function ensureCss() {
+    if (document.getElementById('fork-agents-css-inline')) return;
+    try {
+        const response = await fetch('/scripts/extensions/fork-agents/style.css', { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`CSS fetch ${response.status}`);
+        const css = await response.text();
+        const style = document.createElement('style');
+        style.id = 'fork-agents-css-inline';
+        style.textContent = css;
+        document.head.appendChild(style);
+        console.log(`[fork-agents] CSS injected inline (${css.length} bytes)`);
+    } catch (err) {
+        console.error('[fork-agents] CSS injection failed', err);
+    }
+}
+
 // --- Agent registry ---------------------------------------------------------
 
 const agents = new Map();
@@ -193,13 +215,24 @@ function openAgentsLauncher() {
         toastr.warning('Helper Agents are disabled in extension settings.');
         return;
     }
-    const launcher = document.getElementById('fa-launcher');
-    const backdrop = document.getElementById('fa-backdrop');
-    if (launcher) { launcher.style.display = 'flex'; launcher.style.zIndex = '100002'; }
-    if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
-    $('#fa-launcher').removeClass('fa-hidden');
-    $('#fa-backdrop').removeClass('fa-hidden');
-    console.log('[fork-agents] launcher opened', { launcher: !!launcher, backdrop: !!backdrop });
+    try {
+        let launcher = document.getElementById('fa-launcher');
+        let backdrop = document.getElementById('fa-backdrop');
+        if (!launcher || !backdrop) {
+            buildLauncher();
+            launcher = document.getElementById('fa-launcher');
+            backdrop = document.getElementById('fa-backdrop');
+        }
+        if (launcher) { launcher.style.display = 'flex'; launcher.style.zIndex = '100002'; }
+        if (backdrop) { backdrop.style.display = 'block'; backdrop.style.zIndex = '100001'; }
+        $('#fa-launcher').removeClass('fa-hidden');
+        $('#fa-backdrop').removeClass('fa-hidden');
+        toastr.success(`Launcher ${launcher ? 'OK' : 'MISSING'} · Backdrop ${backdrop ? 'OK' : 'MISSING'}`);
+        console.log('[fork-agents] launcher opened', { launcher: !!launcher, backdrop: !!backdrop });
+    } catch (err) {
+        toastr.error(`Launcher error: ${err?.message || err}`);
+        console.error('[fork-agents] open failed', err);
+    }
 }
 
 function closeAgentsLauncher() {
@@ -810,20 +843,22 @@ jQuery(async () => {
         saveSettingsDebounced();
     }
 
+    await ensureCss();
     buildLauncher();
     buildPanel();
     addSettings();
     registerSlashCommands();
 
-    console.log('[fork-agents] active (v0.1.0)');
+    console.log('[fork-agents] active (v0.1.4)');
 });
 
 export function init() {
     jQuery(async () => {
+        await ensureCss();
         buildLauncher();
         buildPanel();
         addSettings();
         registerSlashCommands();
-        console.log('[fork-agents] re-init (v0.1.0)');
+        console.log('[fork-agents] re-init (v0.1.4)');
     });
 }
