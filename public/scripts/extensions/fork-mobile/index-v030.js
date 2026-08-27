@@ -217,6 +217,11 @@ function initLongMessages() {
 
 // --- UI: floating action button + bottom sheet -----------------------------
 
+/** Hand the launcher off to the fork-agents extension (decoupled via event). */
+function launchAgents() {
+    document.dispatchEvent(new CustomEvent('fork-launch-agents'));
+}
+
 function buildFab() {
     if (!extension_settings[extensionName].fabEnabled) {
         return;
@@ -230,7 +235,7 @@ function buildFab() {
     $('body').append(backdrop, sheet);
 
     const items = [
-        { label: '🧠 Helper Agents', sub: 'coming in Phase 2', disabled: true },
+        { label: '🧠 Helper Agents', sub: 'Lorebook Keeper · Character Smith', action: launchAgents },
         { label: '🎨 Fork Theme', sub: 'coming in Phase 3', disabled: true },
         { label: '📱 Mobile overhaul', sub: 'active — collapse, input cap, perf CSS', disabled: false },
     ];
@@ -243,6 +248,12 @@ function buildFab() {
         }
         row.append($('<div class="fork-sheet-label"></div>').text(item.label));
         row.append($('<div class="fork-sheet-sub"></div>').text(item.sub));
+        if (item.action) {
+            row.on('click', () => {
+                close();
+                item.action();
+            });
+        }
         list.append(row);
     }
 

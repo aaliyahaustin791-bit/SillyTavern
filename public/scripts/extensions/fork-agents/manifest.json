@@ -1,12 +1,12 @@
 {
-    "display_name": "Fork Mobile (foundation)",
-    "loading_order": 100,
+    "display_name": "Fork Agents (native helper agents)",
+    "loading_order": 110,
     "requires": [],
     "optional": [],
-    "js": "index-v030.js",
-    "css": "style-v030.css",
+    "js": "index.js",
+    "css": "style.css",
     "author": "aaliyahaustin791",
-    "version": "0.2.13",
+    "version": "0.1.0",
     "homePage": "https://github.com/aaliyahaustin791-bit/SillyTavern",
     "hooks": {
         "activate": "init"

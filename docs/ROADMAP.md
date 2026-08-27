@@ -14,12 +14,12 @@
 
 ## Phase 2 — Helper agents *(Marinara-inspired, native)*
 
-- [ ] **Agent core**: launcher UI (FAB sheet), shared runtime (chat context, active-model call, prompt templates, result panel)
-- [ ] **Lorebook Keeper** — write/expand world info entries from chat; suggest new entries
-- [ ] **Character Smith** — draft full V2 character cards from a one-line prompt
-- [ ] **Illustrator** — scene/character art via connected image backend (Stable Horde / SD WebUI)
+- [x] **Agent core**: launcher UI (FAB sheet), shared runtime (chat context, active-model call, prompt templates, result panel)
+- [x] **Lorebook Keeper** — write/expand world info entries from chat; suggest new entries
+- [x] **Character Smith** — draft full V2 character cards from a one-line prompt
+- [ ] **Illustrator** — scene/character art via connected image backend (Stable Horde / SD WebUI) *(next pass)*
 - [ ] *(optional)* **Director** — plot, continuity, and scene suggestions
-- [ ] Slash commands (`/agent <name> <prompt>`) + one-tap UI buttons
+- [x] Slash commands (`/agent <name> <prompt>`) + one-tap UI buttons
 
 ## Phase 3 — UI overhaul & release
 

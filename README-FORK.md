@@ -14,7 +14,7 @@ Everything fork-owned lives in isolated spots so upstream merges stay clean:
 | Path | What |
 |---|---|
 | `public/scripts/extensions/fork-mobile/` | Foundation extension: FAB launcher, bottom sheet, mobile CSS hooks |
-| `public/scripts/extensions/fork-agents/` | (Phase 2) Helper agent runtime + agents |
+| `public/scripts/extensions/fork-agents/` | (Phase 2) Helper agent framework: registry, runtime, result panel, Lorebook Keeper + Character Smith |
 | `default/content/themes/` | (Phase 3) Fork-shipped themes |
 | `docs/ROADMAP.md` | Build plan |
 | `README-FORK.md` | This file |
@@ -46,3 +46,4 @@ Then open `http://127.0.0.1:8010` in Kiwi (or via literouter tunnel). The fork h
 ## Status
 
 v0.1 — foundation extension live (FAB + bottom sheet). See `docs/ROADMAP.md`.
+v0.2 — **helper agent framework live** (`fork-agents`): Lorebook Keeper + Character Smith, FAB-sheet launcher, result panel, `/agent` slash command.
