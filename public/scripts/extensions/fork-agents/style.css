@@ -6,7 +6,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 100002;
+    z-index: 1000001;
     /* ST has layers up to 29999 (settings drawer etc.) — must sit above them;
        fork-mobile's working sheet uses 100001, so 100002 wins over everything. */
     display: flex;
@@ -24,7 +24,7 @@
 #fa-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 100001;
+    z-index: 1000000;
     background: rgba(0, 0, 0, 0.55);
 }
 

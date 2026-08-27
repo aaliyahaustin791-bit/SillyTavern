@@ -246,7 +246,7 @@ async function openAgentsLauncher() {
             launcher.style.right = '0';
             launcher.style.height = 'min(62vh, 520px)';
             launcher.style.display = 'flex';
-            launcher.style.zIndex = '100002';
+            launcher.style.zIndex = '1000001';
         }
         if (backdrop) {
             backdrop.style.position = 'fixed';
@@ -256,7 +256,7 @@ async function openAgentsLauncher() {
             backdrop.style.right = '0';
             backdrop.style.height = '100vh';
             backdrop.style.display = 'block';
-            backdrop.style.zIndex = '100001';
+            backdrop.style.zIndex = '1000000';
         }
         // Kill any stuck transform/animation state on the sheet itself (a
         // stylesheet animation frozen at a translate keyframe moves the sheet
@@ -460,7 +460,7 @@ const panel = {
             panelEl.style.right = '0';
             panelEl.style.height = 'min(80vh, 640px)';
             panelEl.style.display = 'flex';
-            panelEl.style.zIndex = '100002';
+            panelEl.style.zIndex = '1000001';
         }
         if (backdrop) {
             backdrop.style.position = 'fixed';
@@ -470,7 +470,7 @@ const panel = {
             backdrop.style.right = '0';
             backdrop.style.height = '100vh';
             backdrop.style.display = 'block';
-            backdrop.style.zIndex = '100001';
+            backdrop.style.zIndex = '1000000';
         }
     },
 

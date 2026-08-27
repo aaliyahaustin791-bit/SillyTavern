@@ -75,13 +75,15 @@ function injectCriticalCss() {
         #fork-sheet {
             position: fixed !important;
             /* Top-anchored with vh — bottom:0 renders above the viewport in
-               this environment (see containing-block saga). */
+               this environment (see containing-block saga). z-index must beat
+               rpg-companion's floating widget (z-index 999999) or it eats the
+               ✕ clicks. */
             top: 0 !important;
             bottom: auto !important;
             left: 0 !important;
             right: 0 !important;
             height: min(74vh, 540px) !important;
-            z-index: 100001 !important;
+            z-index: 1000001 !important;
             background: var(--main-surface, #1e1e2e) !important;
             border-radius: 0 0 18px 18px !important;
             padding: 10px 16px 16px !important;
@@ -95,7 +97,7 @@ function injectCriticalCss() {
             right: 0 !important;
             height: 100vh !important;
             background: rgba(0, 0, 0, 0.55) !important;
-            z-index: 100000 !important;
+            z-index: 1000000 !important;
         }
         #send_textarea {
             min-height: 44px !important;
@@ -301,6 +303,12 @@ function buildFab() {
     if (!extension_settings[extensionName].fabEnabled) {
         return;
     }
+    // buildFab runs from BOTH the boot IIFE and init() — without this guard
+    // two FABs/sheets/backdrops stack (same ids, same position → looks like
+    // one, but bindings and z-fighting break).
+    if (document.getElementById('fork-fab')) {
+        return;
+    }
 
     const fab = $('<div id="fork-fab" title="Fork launcher">✦</div>');
     // Inline the critical positioning — same top-anchored viewport strategy as
@@ -348,7 +356,7 @@ function buildFab() {
     const open = () => {
         // Inline critical positioning (top-anchored, viewport units) so the
         // sheet CANNOT render off-screen even if stylesheets fail or the
-        // containing block is hijacked.
+        // containing block is hijacked. z-index beats rpg-companion's widget.
         const sEl = sheet[0];
         const bEl = backdrop[0];
         if (sEl) {
@@ -358,7 +366,9 @@ function buildFab() {
             sEl.style.left = '0';
             sEl.style.right = '0';
             sEl.style.height = 'min(74vh, 540px)';
-            sEl.style.zIndex = '100001';
+            sEl.style.zIndex = '1000001';
+            sEl.style.display = 'flex';
+            sEl.style.flexDirection = 'column';
         }
         if (bEl) {
             bEl.style.position = 'fixed';
@@ -367,19 +377,27 @@ function buildFab() {
             bEl.style.left = '0';
             bEl.style.right = '0';
             bEl.style.height = '100vh';
-            bEl.style.zIndex = '100000';
+            bEl.style.zIndex = '1000000';
+            bEl.style.display = 'block';
         }
         sheet.removeClass('fork-hidden');
         backdrop.removeClass('fork-hidden');
     };
     const close = () => {
+        // Inline display:none — hiding must never depend on the stylesheet.
+        const sEl = sheet[0];
+        const bEl = backdrop[0];
+        if (sEl) sEl.style.display = 'none';
+        if (bEl) bEl.style.display = 'none';
         sheet.addClass('fork-hidden');
         backdrop.addClass('fork-hidden');
     };
 
     fab.on('click', open);
     backdrop.on('click', close);
-    $('#fork-sheet-close').on('click', close);
+    // Delegated so the ✕ always binds to the visible sheet, even if the sheet
+    // was re-parented by the pinner or a second instance existed.
+    $(document).on('click', '#fork-sheet-close', close);
 }
 
 // --- Settings UI -----------------------------------------------------------
