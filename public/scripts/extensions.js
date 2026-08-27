@@ -544,7 +544,10 @@ async function getManifests(names) {
 
     for (const name of names) {
         const promise = new Promise((resolve, reject) => {
-            fetch(`/scripts/extensions/${name}/manifest.json`).then(async response => {
+            // ?t= busts the browser cache on the manifest itself — otherwise a
+            // cached manifest points at stale ?v= js/css URLs and version bumps
+            // never propagate (Kiwi caches aggressively). Manifests are tiny.
+            fetch(`/scripts/extensions/${name}/manifest.json?t=${Date.now()}`).then(async response => {
                 if (response.ok) {
                     const json = await response.json();
                     obj[name] = json;
