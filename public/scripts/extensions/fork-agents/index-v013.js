@@ -224,6 +224,13 @@ async function openAgentsLauncher() {
             launcher = document.getElementById('fa-launcher');
             backdrop = document.getElementById('fa-backdrop');
         }
+        // RE-PARENT to body: the debug toastr proved something (ST's #movingDivs
+        // or another extension's DOM manager) moves our sheets into a fixed
+        // container anchored at the TOP of the screen — with `bottom:0` they
+        // then render entirely above the viewport (y=-304). Re-appending to
+        // <body> restores the viewport containing block.
+        if (launcher) document.body.appendChild(launcher);
+        if (backdrop) document.body.appendChild(backdrop);
         // ALL critical styles inline — position:fixed is the crucial one:
         // z-index is ignored on a static element, which would leave the sheet
         // in document flow at the end of body (below the fold, invisible).
@@ -241,6 +248,8 @@ async function openAgentsLauncher() {
             backdrop.style.display = 'block';
             backdrop.style.zIndex = '100001';
         }
+        // Keep them pinned to body against any DOM manager.
+        keepAgentsPinned();
         $('#fa-launcher').removeClass('fa-hidden');
         $('#fa-backdrop').removeClass('fa-hidden');
         // Diagnostic toastr: dump the sheet's REAL rendered geometry so we can
@@ -248,7 +257,8 @@ async function openAgentsLauncher() {
         let geo = 'n/a';
         if (launcher) {
             const r = launcher.getBoundingClientRect();
-            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${launcher.parentElement?.id || 'body?'} pos=${launcher.style.position} disp=${launcher.style.display}`;
+            const p = launcher.parentElement;
+            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} pos=${launcher.style.position} disp=${launcher.style.display}`;
         }
         const fab = document.getElementById('fork-fab');
         toastr.success(`Launcher OK · ${geo} · fab=${fab ? 'present' : 'missing'}`);
@@ -257,6 +267,21 @@ async function openAgentsLauncher() {
         toastr.error(`Launcher error: ${err?.message || err}`);
         console.error('[fork-agents] open failed', err);
     }
+}
+
+/** Poll: if anything re-parents our sheets, move them back to body. */
+let agentsPinnedInterval = null;
+function keepAgentsPinned() {
+    if (agentsPinnedInterval) return;
+    agentsPinnedInterval = setInterval(() => {
+        for (const id of ['fa-launcher', 'fa-backdrop', 'fa-panel']) {
+            const el = document.getElementById(id);
+            if (el && el.parentElement !== document.body) {
+                document.body.appendChild(el);
+                console.log('[fork-agents] re-pinned #' + id, 'from', el.parentElement?.tagName, el.parentElement?.id);
+            }
+        }
+    }, 800);
 }
 
 function closeAgentsLauncher() {

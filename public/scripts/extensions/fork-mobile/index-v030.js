@@ -259,6 +259,24 @@ function launchAgents() {
     document.dispatchEvent(new CustomEvent('fork-launch-agents'));
 }
 
+// Something (ST's #movingDivs or another extension's DOM manager) re-parents
+// our floating elements into a top-anchored fixed container — with bottom:0
+// they render entirely ABOVE the viewport (proven: launcher rect y=-304).
+// Poll and pin them back to body.
+let forkPinnedInterval = null;
+function keepForkPinned() {
+    if (forkPinnedInterval) return;
+    forkPinnedInterval = setInterval(() => {
+        for (const id of ['fork-fab', 'fork-sheet', 'fork-backdrop']) {
+            const el = document.getElementById(id);
+            if (el && el.parentElement !== document.body) {
+                document.body.appendChild(el);
+                console.log('[fork-mobile] re-pinned #' + id, 'from', el.parentElement?.tagName, el.parentElement?.id);
+            }
+        }
+    }, 800);
+}
+
 function buildFab() {
     if (!extension_settings[extensionName].fabEnabled) {
         return;
@@ -366,6 +384,7 @@ jQuery(async () => {
     injectCriticalCss();
     applyMobileHooks();
     buildFab();
+    keepForkPinned();
     addSettings();
     initLongMessages();
     initComposeMode();
@@ -379,6 +398,7 @@ export function init() {
         injectCriticalCss();
         applyMobileHooks();
         buildFab();
+        keepForkPinned();
         initLongMessages();
         initComposeMode();
     });
