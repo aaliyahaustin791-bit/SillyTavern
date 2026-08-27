@@ -50,8 +50,13 @@ function injectCriticalCss() {
            as an unstyled div at the end of body (below the fold, invisible). */
         #fork-fab {
             position: fixed !important;
+            /* Anchor from TOP with viewport units: bottom:0 renders above the
+               viewport in this environment (containing-block hijack), while
+               vh units always resolve against the viewport. 144px up from the
+               viewport bottom keeps the FAB above the input bar. */
+            top: calc(100vh - 144px) !important;
             right: calc(16px + env(safe-area-inset-right)) !important;
-            bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+            bottom: auto !important;
             width: 56px !important;
             height: 56px !important;
             border-radius: 50% !important;
@@ -288,6 +293,13 @@ function buildFab() {
     }
 
     const fab = $('<div id="fork-fab" title="Fork launcher">✦</div>');
+    // Inline the critical positioning — same top-anchored viewport strategy as
+    // the critical CSS (bottom:0 renders above the viewport in this env).
+    fab[0].style.top = 'calc(100vh - 144px)';
+    fab[0].style.bottom = 'auto';
+    fab[0].style.right = '16px';
+    fab[0].style.position = 'fixed';
+    fab[0].style.zIndex = '99999';
     $('body').append(fab);
 
     const sheet = $('<div id="fork-sheet" class="fork-hidden"></div>');

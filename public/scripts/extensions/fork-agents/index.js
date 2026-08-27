@@ -232,20 +232,29 @@ async function openAgentsLauncher() {
         // position:fixed. <html> is far less likely to be transformed.
         if (launcher) document.documentElement.appendChild(launcher);
         if (backdrop) document.documentElement.appendChild(backdrop);
-        // ALL critical styles inline — position:fixed is the crucial one:
-        // z-index is ignored on a static element, which would leave the sheet
-        // in document flow at the end of body (below the fold, invisible).
+        // ALL critical styles inline. Anchor from the TOP: with bottom:0 the
+        // sheet consistently renders ABOVE the viewport (y=-287) even with
+        // every containing-block condition clean (elT/bodyT/htmlT=none,
+        // cpos=fixed, parent=HTML). top:0 lands at the viewport top in every
+        // scenario, and vh units resolve against the viewport, not any
+        // containing block — so these values cannot miss.
         if (launcher) {
             launcher.style.position = 'fixed';
+            launcher.style.top = '0';
+            launcher.style.bottom = 'auto';
             launcher.style.left = '0';
             launcher.style.right = '0';
-            launcher.style.bottom = '0';
+            launcher.style.height = 'min(62vh, 520px)';
             launcher.style.display = 'flex';
             launcher.style.zIndex = '100002';
         }
         if (backdrop) {
             backdrop.style.position = 'fixed';
-            backdrop.style.inset = '0';
+            backdrop.style.top = '0';
+            backdrop.style.bottom = 'auto';
+            backdrop.style.left = '0';
+            backdrop.style.right = '0';
+            backdrop.style.height = '100vh';
             backdrop.style.display = 'block';
             backdrop.style.zIndex = '100001';
         }
@@ -283,7 +292,7 @@ async function openAgentsLauncher() {
             const cs = getComputedStyle(launcher);
             const bs = getComputedStyle(document.body);
             const hs = getComputedStyle(document.documentElement);
-            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} cpos=${cs.position} elT=${cs.transform || 'none'} bodyT=${bs.transform || 'none'} htmlT=${hs.transform || 'none'} scrollY=${Math.round(window.scrollY)} docH=${Math.round(document.body.scrollHeight)}`;
+            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} cpos=${cs.position} top=${cs.top} bot=${cs.bottom} elT=${cs.transform || 'none'} bodyT=${bs.transform || 'none'} htmlT=${hs.transform || 'none'} scrollY=${Math.round(window.scrollY)} docH=${Math.round(document.body.scrollHeight)}`;
         }
         const fab = document.getElementById('fork-fab');
         toastr.success(`Launcher OK · ${geo} · fab=${fab ? 'present' : 'missing'}`);
@@ -445,15 +454,21 @@ const panel = {
         const backdrop = document.getElementById('fa-backdrop');
         if (panelEl) {
             panelEl.style.position = 'fixed';
+            panelEl.style.top = '0';
+            panelEl.style.bottom = 'auto';
             panelEl.style.left = '0';
             panelEl.style.right = '0';
-            panelEl.style.bottom = '0';
+            panelEl.style.height = 'min(80vh, 640px)';
             panelEl.style.display = 'flex';
             panelEl.style.zIndex = '100002';
         }
         if (backdrop) {
             backdrop.style.position = 'fixed';
-            backdrop.style.inset = '0';
+            backdrop.style.top = '0';
+            backdrop.style.bottom = 'auto';
+            backdrop.style.left = '0';
+            backdrop.style.right = '0';
+            backdrop.style.height = '100vh';
             backdrop.style.display = 'block';
             backdrop.style.zIndex = '100001';
         }
