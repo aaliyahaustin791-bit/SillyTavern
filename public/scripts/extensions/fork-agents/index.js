@@ -224,13 +224,14 @@ async function openAgentsLauncher() {
             launcher = document.getElementById('fa-launcher');
             backdrop = document.getElementById('fa-backdrop');
         }
-        // RE-PARENT to body: the debug toastr proved something (ST's #movingDivs
-        // or another extension's DOM manager) moves our sheets into a fixed
-        // container anchored at the TOP of the screen — with `bottom:0` they
-        // then render entirely above the viewport (y=-304). Re-appending to
-        // <body> restores the viewport containing block.
-        if (launcher) document.body.appendChild(launcher);
-        if (backdrop) document.body.appendChild(backdrop);
+        // RE-PARENT to <html> (NOT body): the debug toastr proved the sheets sit
+        // in body (parent=BODY) with correct inline styles yet render at y=-304.
+        // That means BODY itself is a shifted containing block — its class list
+        // shows 'drop_target translate nemo-prompt-ui-modern' etc. (some
+        // extension's DOM/transform hack). Transformed ancestors hijack
+        // position:fixed. <html> is far less likely to be transformed.
+        if (launcher) document.documentElement.appendChild(launcher);
+        if (backdrop) document.documentElement.appendChild(backdrop);
         // ALL critical styles inline — position:fixed is the crucial one:
         // z-index is ignored on a static element, which would leave the sheet
         // in document flow at the end of body (below the fold, invisible).
@@ -258,7 +259,10 @@ async function openAgentsLauncher() {
         if (launcher) {
             const r = launcher.getBoundingClientRect();
             const p = launcher.parentElement;
-            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} pos=${launcher.style.position} disp=${launcher.style.display}`;
+            const cs = getComputedStyle(launcher);
+            const bs = getComputedStyle(document.body);
+            const hs = getComputedStyle(document.documentElement);
+            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} cpos=${cs.position} bodyT=${bs.transform || 'none'} bodyTr=${bs.translate || 'none'} htmlT=${hs.transform || 'none'} scrollY=${Math.round(window.scrollY)} docH=${Math.round(document.body.scrollHeight)}`;
         }
         const fab = document.getElementById('fork-fab');
         toastr.success(`Launcher OK · ${geo} · fab=${fab ? 'present' : 'missing'}`);
@@ -269,15 +273,15 @@ async function openAgentsLauncher() {
     }
 }
 
-/** Poll: if anything re-parents our sheets, move them back to body. */
+/** Poll: if anything re-parents our sheets, move them back to html. */
 let agentsPinnedInterval = null;
 function keepAgentsPinned() {
     if (agentsPinnedInterval) return;
     agentsPinnedInterval = setInterval(() => {
         for (const id of ['fa-launcher', 'fa-backdrop', 'fa-panel']) {
             const el = document.getElementById(id);
-            if (el && el.parentElement !== document.body) {
-                document.body.appendChild(el);
+            if (el && el.parentElement !== document.documentElement) {
+                document.documentElement.appendChild(el);
                 console.log('[fork-agents] re-pinned #' + id, 'from', el.parentElement?.tagName, el.parentElement?.id);
             }
         }
