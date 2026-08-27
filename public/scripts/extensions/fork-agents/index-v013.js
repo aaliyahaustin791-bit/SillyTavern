@@ -249,6 +249,27 @@ async function openAgentsLauncher() {
             backdrop.style.display = 'block';
             backdrop.style.zIndex = '100001';
         }
+        // Kill any stuck transform/animation state on the sheet itself (a
+        // stylesheet animation frozen at a translate keyframe moves the sheet
+        // too), and neutralize html's IDENTITY transform (observed:
+        // matrix(1,0,0,1,0,0)). A transform on the root element makes it the
+        // containing block for every fixed descendant — bottom:0 then resolves
+        // against html's box instead of the viewport (observed: y=-287, fully
+        // above the screen). Identity → none is visually identical.
+        const hsNow = getComputedStyle(document.documentElement).transform;
+        if (hsNow && hsNow !== 'none' && hsNow === 'matrix(1, 0, 0, 1, 0, 0)') {
+            document.documentElement.style.transform = 'none';
+        }
+        if (launcher) {
+            launcher.style.transform = 'none';
+            launcher.style.animation = 'none';
+            launcher.style.top = 'auto';
+        }
+        if (backdrop) {
+            backdrop.style.transform = 'none';
+            backdrop.style.animation = 'none';
+            backdrop.style.top = 'auto';
+        }
         // Keep them pinned to body against any DOM manager.
         keepAgentsPinned();
         $('#fa-launcher').removeClass('fa-hidden');
@@ -262,7 +283,7 @@ async function openAgentsLauncher() {
             const cs = getComputedStyle(launcher);
             const bs = getComputedStyle(document.body);
             const hs = getComputedStyle(document.documentElement);
-            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} cpos=${cs.position} bodyT=${bs.transform || 'none'} bodyTr=${bs.translate || 'none'} htmlT=${hs.transform || 'none'} scrollY=${Math.round(window.scrollY)} docH=${Math.round(document.body.scrollHeight)}`;
+            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${p ? p.tagName + '#' + p.id + '.' + (p.className || '') : 'none'} cpos=${cs.position} elT=${cs.transform || 'none'} bodyT=${bs.transform || 'none'} htmlT=${hs.transform || 'none'} scrollY=${Math.round(window.scrollY)} docH=${Math.round(document.body.scrollHeight)}`;
         }
         const fab = document.getElementById('fork-fab');
         toastr.success(`Launcher OK · ${geo} · fab=${fab ? 'present' : 'missing'}`);
@@ -273,11 +294,18 @@ async function openAgentsLauncher() {
     }
 }
 
-/** Poll: if anything re-parents our sheets, move them back to html. */
+/** Poll: if anything re-parents our sheets, move them back to html. Also
+ *  neutralize an identity transform stuck on <html> (root transform hijacks
+ *  the containing block for all fixed descendants). */
 let agentsPinnedInterval = null;
 function keepAgentsPinned() {
     if (agentsPinnedInterval) return;
     agentsPinnedInterval = setInterval(() => {
+        const hs = getComputedStyle(document.documentElement).transform;
+        if (hs && hs !== 'none' && hs === 'matrix(1, 0, 0, 1, 0, 0)') {
+            document.documentElement.style.transform = 'none';
+            console.log('[fork-agents] neutralized html identity transform');
+        }
         for (const id of ['fa-launcher', 'fa-backdrop', 'fa-panel']) {
             const el = document.getElementById(id);
             if (el && el.parentElement !== document.documentElement) {

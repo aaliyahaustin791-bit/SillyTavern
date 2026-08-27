@@ -259,13 +259,19 @@ function launchAgents() {
     document.dispatchEvent(new CustomEvent('fork-launch-agents'));
 }
 
-// Something transforms <body> (class list shows drop_target/translate/... hacks),
-// which hijacks position:fixed for everything inside it (proven: launcher rect
-// y=-304 with parent=BODY). Pin our floating elements to <html> instead.
+// Something transforms <body>/<html> (observed: html carries an IDENTITY
+// transform matrix(1,0,0,1,0,0) — any root transform hijacks the containing
+// block for every fixed descendant, so bottom:0 lands above the viewport).
+// Pin our floating elements to <html> and neutralize the identity transform.
 let forkPinnedInterval = null;
 function keepForkPinned() {
     if (forkPinnedInterval) return;
     forkPinnedInterval = setInterval(() => {
+        const hs = getComputedStyle(document.documentElement).transform;
+        if (hs && hs !== 'none' && hs === 'matrix(1, 0, 0, 1, 0, 0)') {
+            document.documentElement.style.transform = 'none';
+            console.log('[fork-mobile] neutralized html identity transform');
+        }
         for (const id of ['fork-fab', 'fork-sheet', 'fork-backdrop']) {
             const el = document.getElementById(id);
             if (el && el.parentElement !== document.documentElement) {
