@@ -7611,6 +7611,10 @@ export async function getChat() {
 
         // Focus on the textarea if not already focused on a visible text input
         delay(debounce_timeout.short).then(() => {
+            if (isMobile()) {
+                // FORK (mobile-overhaul): never auto-focus on mobile — it pops the on-screen keyboard on every chat open
+                return;
+            }
             if ($(document.activeElement).is('input:visible, textarea:visible')) {
                 return;
             }
