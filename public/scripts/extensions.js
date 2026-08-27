@@ -431,7 +431,11 @@ async function callExtensionHook(name, hookName) {
         return;
     }
 
-    const url = `/scripts/extensions/${name}/${manifest.js}`;
+    // MUST match addExtensionScript's URL (including the ?v= cache-bust) —
+    // a different query string makes the browser treat it as a different
+    // module and re-executes the extension's top-level code (duplicate
+    // settings blocks, duplicate FABs, double event listeners).
+    const url = `/scripts/extensions/${name}/${manifest.js}?v=${manifest.version ?? ''}`;
     console.debug(`callExtensionHook: Calling hook "${hookName}" (function "${hookFunctionName}") for extension "${name}"`);
 
     try {

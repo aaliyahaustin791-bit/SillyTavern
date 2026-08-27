@@ -3,7 +3,7 @@
 // (long-message collapse w/ keyboard-aware resizing, typing input cap).
 
 import { extension_settings } from '../../extensions.js';
-import { eventSource, event_types, saveSettingsDebounced } from '../../../script.js';
+import { eventSource, event_types, saveSettings, saveSettingsDebounced } from '../../../script.js';
 import { isMobile } from '../../RossAscends-mods.js';
 
 const extensionName = 'fork-mobile';
@@ -302,8 +302,9 @@ function addSettings() {
     $('#fork-fab-toggle, #fork-collapse-long-toggle').on('change', function () {
         const key = $(this).attr('data-setting');
         extension_settings[extensionName][key] = $(this).prop('checked');
-        saveSettingsDebounced();
-        location.reload();
+        // Await the ACTUAL save before reloading — saveSettingsDebounced is
+        // debounced, so reloading immediately loses the change (toggle reverts).
+        saveSettings().then(() => location.reload());
     });
 
     // Reflect current settings on the inputs.

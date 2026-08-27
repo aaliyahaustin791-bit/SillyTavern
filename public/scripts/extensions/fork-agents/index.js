@@ -17,7 +17,7 @@
 // without changing agent definitions.
 
 import { extension_settings, getContext } from '../../extensions.js';
-import { addOneMessage, chat, getRequestHeaders, saveChatConditional, saveSettingsDebounced } from '../../../script.js';
+import { addOneMessage, chat, getRequestHeaders, saveChatConditional, saveSettings, saveSettingsDebounced } from '../../../script.js';
 import { getMessageTimeStamp } from '../../RossAscends-mods.js';
 import { loadWorldInfo, createWorldInfoEntry, saveWorldInfo } from '../../world-info.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -183,6 +183,23 @@ async function runAgent(agent, input, { skipInput = false } = {}) {
 
 // --- Launcher (agent picker bottom sheet) ------------------------------------
 
+// Module-level open/close: the button in settings binds directly to these, and
+// fork-mobile's FAB dispatches 'fork-launch-agents' which calls openAgentsLauncher.
+function openAgentsLauncher() {
+    if (!settings().enabled) {
+        toastr.warning('Helper Agents are disabled in extension settings.');
+        return;
+    }
+    $('#fa-launcher').removeClass('fa-hidden');
+    $('#fa-backdrop').removeClass('fa-hidden');
+    console.log('[fork-agents] launcher opened');
+}
+
+function closeAgentsLauncher() {
+    $('#fa-launcher').addClass('fa-hidden');
+    $('#fa-backdrop').addClass('fa-hidden');
+}
+
 function buildLauncher() {
     if (document.getElementById('fa-launcher')) return;
 
@@ -203,28 +220,18 @@ function buildLauncher() {
         col.append($('<div class="fa-agent-name"></div>').text(agent.name));
         col.append($('<div class="fa-agent-tagline"></div>').text(agent.tagline));
         row.append(col);
-        row.on('click', () => { closeLauncher(); panel.open(agent); });
+        row.on('click', () => { closeAgentsLauncher(); panel.open(agent); });
         list.append(row);
     }
     launcher.append(list);
 
     launcher.append($('<div class="fa-hint">Or type: /agent name=lorebook-keeper prompt=…</div>'));
 
-    const openLauncher = () => {
-        if (!settings().enabled) { toastr.warning('Helper Agents are disabled in extension settings.'); return; }
-        launcher.removeClass('fa-hidden');
-        backdrop.removeClass('fa-hidden');
-    };
-    const closeLauncher = () => {
-        launcher.addClass('fa-hidden');
-        backdrop.addClass('fa-hidden');
-    };
-
-    $('#fa-launcher-close').on('click', closeLauncher);
-    backdrop.on('click', closeLauncher);
+    $('#fa-launcher-close').on('click', closeAgentsLauncher);
+    backdrop.on('click', closeAgentsLauncher);
 
     // Opened from fork-mobile's FAB sheet (and anywhere else that dispatches it).
-    document.addEventListener('fork-launch-agents', openLauncher);
+    document.addEventListener('fork-launch-agents', openAgentsLauncher);
 }
 
 // --- Result panel -------------------------------------------------------------
@@ -750,8 +757,9 @@ function addSettings() {
 
     $('#fa-enabled-toggle').on('change', function () {
         extension_settings[extensionName].enabled = $(this).prop('checked');
-        saveSettingsDebounced();
-        location.reload();
+        // Await the ACTUAL save before reloading — saveSettingsDebounced is
+        // debounced, so reloading immediately loses the change (toggle reverts).
+        saveSettings().then(() => location.reload());
     });
 
     // Instant-apply for the text/number inputs (runtime reads settings live).
@@ -765,9 +773,9 @@ function addSettings() {
         toastr.success('Agent settings saved.');
     });
 
-    $('#fa-open-launcher').on('click', () => {
-        document.dispatchEvent(new CustomEvent('fork-launch-agents'));
-    });
+    // Delegated binding on document: survives re-renders of the settings panel
+    // and works even if addSettings runs before this element exists.
+    $(document).on('click', '#fa-open-launcher', openAgentsLauncher);
 
     // Reflect current settings on the inputs.
     $('#fa-enabled-toggle').prop('checked', !!extension_settings[extensionName].enabled);
