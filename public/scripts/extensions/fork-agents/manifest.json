@@ -6,7 +6,7 @@
     "js": "index-v013.js",
     "css": "style.css",
     "author": "aaliyahaustin791",
-    "version": "0.1.13",
+    "version": "0.1.14",
     "homePage": "https://github.com/aaliyahaustin791-bit/SillyTavern",
     "hooks": {
         "activate": "init"

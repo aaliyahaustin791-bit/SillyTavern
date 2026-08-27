@@ -609,6 +609,23 @@ function buildPanel() {
     $('#fa-panel-close').on('click', () => panel.close());
 }
 
+/** Harvest complete entry objects from truncated/partial JSON via regex.
+ *  Matches complete "key":[...] + "content":"..." pairs; anything cut off
+ *  mid-string is skipped. Returns [] if nothing complete exists. */
+function salvageEntries(raw) {
+    const out = [];
+    const re = /\{\s*"key"\s*:\s*\[([\s\S]*?)\]\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(String(raw || '')))) {
+        const keys = [...m[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(x => x[1].trim()).filter(Boolean);
+        const content = m[2];
+        if (keys.length && content) {
+            out.push({ key: keys, content, comment: '', constant: false, selective: false });
+        }
+    }
+    return out;
+}
+
 // --- Agents -------------------------------------------------------------------
 
 // Lorebook Keeper — propose world-info entries from the recent scene.
@@ -619,7 +636,7 @@ registerAgent({
     tagline: 'Propose world-info entries from the recent scene',
     category: 'writer',
     phase: 'manual',
-    maxTokens: 2000,
+    maxTokens: 4000,
     needsInput: true,
     inputPlaceholder: 'Optional focus — e.g. "the tavern", "the war", "the guild"…',
     applyLabel: 'Add checked entries',
@@ -638,10 +655,11 @@ Output ONLY valid JSON, no markdown, no commentary:
 Rules:
 - Propose 2-6 entries. Skip one-off actions and dialogue-only beats.
 - key: 1-3 short trigger phrases (lowercase, 2-6 words) that would appear in later chat when this fact matters.
-- content: durable, specific, written from the facts in the chat — never invent new plot.
+- content: 2-3 SHORT sentences, under 180 characters total. Durable, specific, written from the facts in the chat — never invent new plot.
 - constant: true ONLY for always-relevant setting facts (world name, magic rules, a character's core identity). Default false.
 - selective: true when the entry should only show when its key matches.
-- Do NOT duplicate the existing lorebook keys listed below — if the fact is already covered, leave it out.`;
+- Do NOT duplicate the existing lorebook keys listed below — if the fact is already covered, leave it out.
+- Keep the WHOLE response compact; every entry must be COMPLETE — do not truncate.`;
 
         const prompt = `Character: {{char}}
 User: {{user}}
@@ -663,6 +681,12 @@ Recent chat:
             entries = json.world_info;
         } else if (json && Array.isArray(json.data?.entries)) {
             entries = json.data.entries;
+        }
+        if (!entries.length) {
+            // Truncation salvage: if the response was cut off mid-JSON but some
+            // entries are COMPLETE, harvest them with a regex instead of
+            // failing (the 2000-token cap used to truncate mid-content).
+            entries = salvageEntries(raw);
         }
         if (!entries.length) {
             // Fail soft: don't throw away the model's output — surface it as a
