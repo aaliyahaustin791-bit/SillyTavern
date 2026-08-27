@@ -306,9 +306,10 @@ export async function getHordeModels(force) {
         $('#horde_model').append(option);
     }
 
-    // if previously selected is no longer available
-    if (horde_settings.models.length && models.filter(m => horde_settings.models.includes(m.name)).length === 0) {
-        horde_settings.models = [];
+    // if previously selected is no longer available, only clear models that exist in the model list
+    // (preserve models from other sources like SD image gen that may not appear in text model list)
+    if (horde_settings.models.length && models.length > 0) {
+        horde_settings.models = horde_settings.models.filter(m => models.some(x => x.name === m));
     }
 
     setContextSizePreview();

@@ -239,7 +239,14 @@ app.get('/login', loginPageMiddleware);
 const webpackMiddleware = getWebpackServeMiddleware();
 app.use(webpackMiddleware);
 app.use(userCssMiddleware);
-app.use(express.static(path.join(serverDirectory, 'public'), {}));
+// FORK: no-store for everything in public/ — a localhost app has zero
+// benefit from browser caching, and Kiwi's aggressive caching caused
+// endless "my fix didn't take" confusion (stale manifests → stale ?v= URLs).
+app.use(express.static(path.join(serverDirectory, 'public'), {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.set('Cache-Control', 'no-store'),
+}));
 
 // Public API
 app.use('/api/users', usersPublicRouter);
