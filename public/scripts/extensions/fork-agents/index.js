@@ -192,7 +192,7 @@ function openAgentsLauncher() {
     }
     $('#fa-launcher').removeClass('fa-hidden');
     $('#fa-backdrop').removeClass('fa-hidden');
-    console.log('[fork-agents] launcher opened');
+    console.log('[fork-agents] launcher opened', { launcher: $('#fa-launcher').length, backdrop: $('#fa-backdrop').length });
 }
 
 function closeAgentsLauncher() {
