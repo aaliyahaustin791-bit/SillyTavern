@@ -308,10 +308,14 @@ function addSettings() {
     });
 
     // Reflect current settings on the inputs.
-    for (const key of Object.keys(defaultSettings)) {
-        const value = extension_settings[extensionName][key];
-        $(`#fork-${camelToKebab(key)}-toggle`).prop('checked', value);
-    }
+    // Iterate the REAL inputs and read the key from data-setting — the old
+    // `#fork-${camelToKebab(key)}-toggle` selector built `#fork-fab-enabled-toggle`
+    // which doesn't exist (the id is `fork-fab-toggle`), so the FAB checkbox
+    // NEVER showed its saved state and every toggle looked like it "reverted".
+    $('#fork-fab-toggle, #fork-collapse-long-toggle').each(function () {
+        const key = $(this).attr('data-setting');
+        $(this).prop('checked', !!extension_settings[extensionName][key]);
+    });
 }
 
 // --- Init -------------------------------------------------------------------
