@@ -346,3 +346,20 @@
     opacity: 0.6;
     font-size: 12px;
 }
+
+/* Fail-soft raw output */
+.fa-warn { color: #fbbf24 !important; }
+.fa-raw-block {
+    background: rgba(0, 0, 0, 0.35) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 10px !important;
+    padding: 10px !important;
+    margin-top: 8px !important;
+    max-height: 40vh !important;
+    overflow-y: auto !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    font-size: 13px !important;
+    font-family: monospace !important;
+    line-height: 1.45 !important;
+}

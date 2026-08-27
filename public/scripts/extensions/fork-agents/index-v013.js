@@ -57,17 +57,58 @@ function stripMeta(text) {
     return s.trim();
 }
 
-/** Robust JSON extraction: strip reasoning, fences, and prose around the JSON. */
+/** Robust JSON extraction: strip reasoning, fences, and prose around the JSON.
+ *  Strategy 1: whole-string parse after stripping CoT wrappers + fences.
+ *  Strategy 2: brace-balanced scan from the first { or [ — ignores braces
+ *  inside strings and stops at the balanced close, so prose/truncation before
+ *  or after the JSON can't break it. (Kimi leaks <plan>/<think> CoT blocks and
+ *  sometimes wraps the JSON in commentary.)
+ *  Strategy 3: first line that parses standalone. */
 function extractJson(text) {
     let s = String(text || '');
     s = s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
     s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    s = s.replace(/```json\s*|```/gi, '');
-    s = s.replace(/^[^{[]*/, '');
-    s = s.replace(/[^}\]]*$/, '');
+    s = s.replace(/<plan>[\s\S]*?<\/plan>/gi, '');
+    s = s.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+    s = s.replace(/```json\s*/gi, '').replace(/```/gi, '');
     s = s.trim();
     if (!s) return null;
-    try { return JSON.parse(s); } catch { return null; }
+
+    // Strategy 1
+    try { return JSON.parse(s); } catch { /* fall through */ }
+
+    // Strategy 2: brace-balanced scan
+    let start = -1;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === '{' || c === '[') { start = i; break; }
+    }
+    if (start >= 0) {
+        const openCh = s[start];
+        const closeCh = openCh === '{' ? '}' : ']';
+        let depth = 0, inStr = false, esc = false, end = -1;
+        for (let i = start; i < s.length; i++) {
+            const c = s[i];
+            if (esc) { esc = false; continue; }
+            if (c === '\\') { esc = true; continue; }
+            if (inStr) { if (c === '"') inStr = false; continue; }
+            if (c === '"') { inStr = true; continue; }
+            if (c === openCh) depth++;
+            else if (c === closeCh) { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        if (end > start) {
+            try { return JSON.parse(s.slice(start, end)); } catch { /* fall through */ }
+        }
+    }
+
+    // Strategy 3: per-line parse
+    for (const line of s.split('\n')) {
+        const l = line.trim();
+        if (l.startsWith('{') || l.startsWith('[')) {
+            try { return JSON.parse(l); } catch { /* keep scanning */ }
+        }
+    }
+    return null;
 }
 
 function copyText(text) {
@@ -613,10 +654,22 @@ Recent chat:
 
     parseOutput(raw) {
         const json = extractJson(raw);
-        if (!json || !Array.isArray(json.entries)) {
-            throw new Error('Model did not return a JSON object with an "entries" array.');
+        let entries = [];
+        if (json && Array.isArray(json.entries)) {
+            entries = json.entries;
+        } else if (json && Array.isArray(json.lorebook_entries)) {
+            entries = json.lorebook_entries;
+        } else if (json && Array.isArray(json.world_info)) {
+            entries = json.world_info;
+        } else if (json && Array.isArray(json.data?.entries)) {
+            entries = json.data.entries;
         }
-        const entries = json.entries
+        if (!entries.length) {
+            // Fail soft: don't throw away the model's output — surface it as a
+            // raw-text result so the user can read/copy it and we can debug.
+            return { entries: [], raw: String(raw || ''), parseFailed: true };
+        }
+        const parsed = entries
             .map(e => ({
                 key: Array.isArray(e.key) ? e.key.map(k => String(k).trim()).filter(Boolean) : [String(e.key || '').trim()].filter(Boolean),
                 content: String(e.content || '').trim(),
@@ -625,11 +678,19 @@ Recent chat:
                 selective: !!e.selective,
             }))
             .filter(e => e.key.length && e.content);
-        if (!entries.length) throw new Error('Model returned no usable entries.');
-        return { entries };
+        if (!parsed.length) {
+            return { entries: [], raw: String(raw || ''), parseFailed: true };
+        }
+        return { entries: parsed };
     },
 
     renderResult(result) {
+        if (result.parseFailed) {
+            // Fail soft: show the model's raw output so it's never lost.
+            const shown = String(result.raw || '').slice(0, 4000);
+            return `<div class="fa-result-intro fa-warn">The model's reply didn't parse into entries — showing it raw so you can still read/copy it. (If this repeats, tell the developer — the parser may need to learn this model's format.)</div>
+                <div class="fa-raw-block">${escapeHtml(shown)}</div>`;
+        }
         const intro = `<div class="fa-result-intro">${result.entries.length} proposed entr${result.entries.length === 1 ? 'y' : 'ies'} — uncheck any to skip, then Apply.</div>`;
         const cards = result.entries.map((e, i) => `
             <label class="fa-entry-card">
