@@ -243,8 +243,16 @@ async function openAgentsLauncher() {
         }
         $('#fa-launcher').removeClass('fa-hidden');
         $('#fa-backdrop').removeClass('fa-hidden');
-        toastr.success(`Launcher ${launcher ? 'OK' : 'MISSING'} · Backdrop ${backdrop ? 'OK' : 'MISSING'}`);
-        console.log('[fork-agents] launcher opened', { launcher: !!launcher, backdrop: !!backdrop });
+        // Diagnostic toastr: dump the sheet's REAL rendered geometry so we can
+        // see where it lands without the user needing the console.
+        let geo = 'n/a';
+        if (launcher) {
+            const r = launcher.getBoundingClientRect();
+            geo = `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} vh=${Math.round(window.innerHeight)} parent=${launcher.parentElement?.id || 'body?'} pos=${launcher.style.position} disp=${launcher.style.display}`;
+        }
+        const fab = document.getElementById('fork-fab');
+        toastr.success(`Launcher OK · ${geo} · fab=${fab ? 'present' : 'missing'}`);
+        console.log('[fork-agents] launcher opened', { launcher: !!launcher, backdrop: !!backdrop, geo, fab: !!fab });
     } catch (err) {
         toastr.error(`Launcher error: ${err?.message || err}`);
         console.error('[fork-agents] open failed', err);
