@@ -188,7 +188,8 @@ async function runAgent(agent, input, { skipInput = false } = {}) {
 // NOTE: we set inline styles (not just class toggles) so no stale/cached CSS,
 // class mismatch, or !important war can hide the sheets.
 function openAgentsLauncher() {
-    if (!settings().enabled) {
+    const s = settings();
+    if (!s || !s.enabled) {
         toastr.warning('Helper Agents are disabled in extension settings.');
         return;
     }
@@ -768,7 +769,7 @@ function addSettings() {
                 <input id="fa-context-input" type="number" min="5" max="200" step="1" data-setting="maxContextMessages">
             </div>
             <button id="fa-open-launcher" class="menu_button">🧠 Open Helper Agents</button>
-            <small>Fork Agents — v0.1.0 (Phase 2: helper agent framework)</small>
+            <small>Fork Agents — v0.1.4 (Phase 2: helper agent framework)</small>
         </div>`;
 
     $('#extensions_settings').append(html);
