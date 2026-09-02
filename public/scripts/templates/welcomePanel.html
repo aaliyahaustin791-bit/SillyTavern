@@ -1,67 +1,56 @@
+<!-- fork-home v1: greeting hero + messenger-style recent chat list -->
 <div class="welcomePanel">
-    <div class="welcomeHeaderTitle">
+    <div class="welcomeHero">
         <img src="img/logo.png" alt="SillyTavern Logo" data-i18n="[alt]SillyTavern Logo" class="welcomeHeaderLogo">
-        <span class="welcomeHeaderVersionDisplay">{{version}}</span>
-        <div class="mes_button showRecentChats" title="Show recent chats" data-i18n="[title]Show recent chats">
-            <i class="fa-solid fa-circle-chevron-down fa-fw fa-lg"></i>
+        <div class="welcomeHeroMain">
+            <div class="welcomeGreeting">{{greeting}}</div>
+            <div class="welcomeTagline">{{tagline}}</div>
         </div>
-        <div class="mes_button recentChatsSettings" title="Recent chats settings" data-i18n="[title]Recent chats settings">
-            <i class="fa-solid fa-gear fa-fw fa-lg"></i>
-        </div>
-        <div class="mes_button hideRecentChats" title="Hide recent chats" data-i18n="[title]Hide recent chats">
-            <i class="fa-solid fa-circle-xmark fa-fw fa-lg"></i>
+        <div class="welcomeHeroSide">
+            <div class="welcomeVersion" title="SillyTavern version">{{version}}</div>
+            <div class="welcomeHeroActions">
+                <div class="mes_button showRecentChats" title="Show recent chats" data-i18n="[title]Show recent chats">
+                    <i class="fa-solid fa-circle-chevron-down fa-fw fa-lg"></i>
+                </div>
+                <div class="mes_button recentChatsSettings" title="Recent chats settings" data-i18n="[title]Recent chats settings">
+                    <i class="fa-solid fa-gear fa-fw fa-lg"></i>
+                </div>
+                <div class="mes_button hideRecentChats" title="Hide recent chats" data-i18n="[title]Hide recent chats">
+                    <i class="fa-solid fa-circle-xmark fa-fw fa-lg"></i>
+                </div>
+            </div>
         </div>
     </div>
+
     <div class="welcomeHeader">
-        <div class="recentChatsTitle" data-i18n="Recent Chats">
-            Recent Chats
-        </div>
-        <div class="welcomeShortcuts">
-            <a class="menu_button menu_button_icon" target="_blank" href="https://docs.sillytavern.app/">
-                <i class="fa-solid fa-question-circle"></i>
-                <span data-i18n="Docs">Docs</span>
-            </a>
-            <a class="menu_button menu_button_icon" target="_blank" href="https://github.com/SillyTavern/SillyTavern">
-                <i class="fa-brands fa-github"></i>
-                <span data-i18n="GitHub">GitHub</span>
-            </a>
-            <a class="menu_button menu_button_icon" target="_blank" href="https://discord.gg/sillytavern">
-                <i class="fa-brands fa-discord"></i>
-                <span data-i18n="Discord">Discord</span>
-            </a>
-            <span class="welcomeShortcutsSeparator">&vert;</span>
-            <button class="openTemporaryChat menu_button menu_button_icon">
-                <i class="fa-solid fa-comment-dots"></i>
-                <span data-i18n="Temporary Chat">Temporary Chat</span>
-            </button>
-        </div>
+        <div class="recentChatsTitle" data-i18n="Recent Chats">Recent chats</div>
+        <button class="openTemporaryChat menu_button menu_button_icon" title="Open a temporary chat" data-i18n="[title]Open a temporary chat">
+            <i class="fa-solid fa-comment-dots"></i>
+            <span data-i18n="Temporary Chat">Temporary Chat</span>
+        </button>
     </div>
+
     <div class="welcomeRecent">
         <div class="recentChatList">
         {{#if empty}}
             <div class="noRecentChat">
                 <i class="fa-solid fa-comment-dots"></i>
-                <span data-i18n="No recent chats">No recent chats</span>
+                <span data-i18n="No recent chats">No chats yet</span>
+                <small>Pick a character to start your first story.</small>
             </div>
         {{/if}}
         {{#each chats}}
             {{#with this}}
-            <div class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{/if}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}">
-                {{#if pinned}}
-                    <div class="recentChatPinned">
-                        <i class="fa-solid fa-thumbtack fa-fw fa-xs" title="Pinned chat" data-i18n="[title]Pinned chat"></i>
-                    </div>
-                {{/if}}
+            <div class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{/if}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}" title="{{char_name}}&#10;{{chat_name}}">
                 <div class="avatar" title="[Character] {{char_name}}&#10;File: {{avatar}}">
                     <img src="{{char_thumbnail}}" alt="{{char_name}}">
                 </div>
                 <div class="recentChatInfo">
                     <div class="chatNameContainer">
-                        <div class="chatName" title="{{file_name}}">
-                            <strong class="characterName">{{char_name}}</strong>
-                            <span>&ndash;</span>
-                            <span>{{chat_name}}</span>
-                        </div>
+                        {{#if pinned}}
+                            <i class="fa-solid fa-thumbtack fa-fw fa-xs recentChatPinned" title="Pinned chat" data-i18n="[title]Pinned chat"></i>
+                        {{/if}}
+                        <strong class="characterName">{{char_name}}</strong>
                         <small class="chatDate" title="{{date_long}}">{{date_short}}</small>
                         <div class="chatActions">
                             <button class="menu_button menu_button_icon pinChat {{#if pinned}}active{{/if}}" title="Pin chat" data-i18n="[title]Pin chat">
@@ -76,15 +65,10 @@
                         </div>
                     </div>
                     <div class="chatMessageContainer">
-                        <div class="chatMessage" title="{{mes}}">
-                            {{mes}}
-                        </div>
+                        <div class="chatMessage" title="{{mes}}">{{mes}}</div>
                         <div class="chatStats">
-                            <div class="counterBlock">
-                                <i class="fa-solid fa-comment fa-xs"></i>
-                                <small>{{chat_items}}</small>
-                            </div>
-                            <small class="fileSize">{{file_size}}</small>
+                            <i class="fa-solid fa-comment fa-xs"></i>
+                            <small>{{chat_items}}</small>
                         </div>
                     </div>
                 </div>
@@ -92,7 +76,7 @@
             {{/with}}
         {{/each}}
         {{#if more}}
-            <button class="menu_button menu_button_icon showMoreChats">
+            <button class="menu_button menu_button_icon showMoreChats" title="Show more recent chats" data-i18n="[title]Show more recent chats">
                 <small class="fa-solid fa-chevron-down fa-fw fa-1x"></small>
             </button>
         {{/if}}

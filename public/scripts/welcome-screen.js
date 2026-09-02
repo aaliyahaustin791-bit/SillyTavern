@@ -320,11 +320,17 @@ async function sendWelcomePanel(chats, expand = false) {
             console.error('Chat element not found');
             return;
         }
+        const now = new Date();
+        const hour = now.getHours();
+        // fork-home v1: time-aware greeting hero (edit strings here to customize)
+        const greeting = hour < 5 ? 'Up late?' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
         const templateData = {
             chats,
             empty: !chats.length,
             version: displayVersion,
             more: chats.some(chat => chat.hidden),
+            greeting,
+            tagline: 'Your stories are waiting.',
         };
         const template = await renderTemplateAsync('welcomePanel', templateData);
         const fragment = document.createRange().createContextualFragment(template);
