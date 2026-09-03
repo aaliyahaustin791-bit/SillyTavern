@@ -615,7 +615,7 @@ function addSettings() {
                 <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
                 <span>Collapse top bar icons into a ⋮ menu</span>
             </label>
-            <small>Fork Mobile — v0.2.27 (mobile overhaul + top bar menu + home font)</small>
+            <small>Fork Mobile — v0.2.28 (mobile overhaul + top bar menu + home font + chat portraits)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -670,7 +670,7 @@ jQuery(async () => {
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active v0.2.27 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
+    console.log('[fork-mobile] active v0.2.28 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
 });
 
 export function init() {

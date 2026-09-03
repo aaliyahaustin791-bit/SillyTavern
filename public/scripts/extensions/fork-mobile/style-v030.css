@@ -343,3 +343,19 @@
     font-weight: 400;
     letter-spacing: 0.1px;
 }
+
+/* ===== Chat message portraits (fork-mobile v0.2.28): 50px -> 64px ===== */
+#chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage) {
+    width: 64px !important;
+    height: 64px !important;
+    flex: 0 0 auto !important;
+}
+
+#chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage) img {
+    width: 64px !important;
+    height: 64px !important;
+}
+
+#chat .mes.last_mes .mesAvatarWrapper {
+    padding-bottom: 64px !important;
+}
