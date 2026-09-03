@@ -594,6 +594,106 @@ function buildTopMenu() {
     $(document).on('click', '#fork-topmenu-close', close);
 }
 
+// --- Swipe-down to close: settings drawers + the top-bar menu ---------------
+// Mobile gesture (v0.2.30): with the top bar collapsed, open drawer panels have
+// no visible close icon (their .drawer-toggle is hidden), so closing meant
+// hunting menu buttons. Pull any open .drawer-content (or the ⋮ menu panel)
+// down from its top like a sheet: >80px of downward drag = close via ST's own
+// toggle click; otherwise it springs back. Only engages when the panel is
+// scrolled to the very top, so inner scrolling is never hijacked.
+
+function initSwipeClose() {
+    if (!(isMobile() || mobileQuery.matches)) {
+        return; // desktop keeps mouse/dots/X workflows
+    }
+
+    const CLOSE_PX = 80;
+    let startY = null;
+    let startX = null;
+    let el = null;
+    let dragging = false;
+
+    const isCloseable = (target) => {
+        const $c = $(target).closest('.drawer-content.openDrawer, #fork-topmenu-panel:not(.fork-hidden)');
+        return $c.length ? $c[0] : null;
+    };
+
+    $(document).off('.forkSwipe')
+        .on('touchstart.forkSwipe', function (e) {
+            const t = e.originalEvent.touches[0];
+            if (!t) return;
+            const candidate = isCloseable(e.target);
+            if (!candidate) return;
+            // Only start from the top of a scrollable drawer; the ⋮ menu panel
+            // (a dropdown list) can be grabbed anywhere.
+            if (candidate.classList.contains('drawer-content') && candidate.scrollTop > 0) {
+                return;
+            }
+            startY = t.clientY;
+            startX = t.clientX;
+            el = candidate;
+            dragging = false;
+            el.__forkDy = 0;
+        })
+        .on('touchmove.forkSwipe', function (e) {
+            if (!el) return;
+            const t = e.originalEvent.touches[0];
+            if (!t) return;
+            const dy = t.clientY - startY;
+            const dx = t.clientX - startX;
+            if (!dragging) {
+                // Horizontal intent or upward scroll = not our gesture.
+                if (Math.abs(dx) > Math.abs(dy) || dy < 0) {
+                    el = null;
+                    return;
+                }
+                if (dy > 10) {
+                    dragging = true;
+                    el.style.transition = 'none';
+                } else {
+                    return;
+                }
+            }
+            const pull = Math.max(0, dy);
+            el.__forkDy = pull;
+            el.style.transform = 'translateY(' + pull + 'px)';
+        })
+        .on('touchend.forkSwipe touchcancel.forkSwipe', function () {
+            if (!el) return;
+            const el0 = el;
+            const pull = el0.__forkDy || 0;
+            el = null;
+            dragging = false;
+            if (pull > CLOSE_PX) {
+                // Slide fully off, then close through the real toggle.
+                el0.style.transition = 'transform 0.16s ease-in';
+                el0.style.transform = 'translateY(100%)';
+                setTimeout(() => {
+                    el0.style.transform = '';
+                    el0.style.transition = '';
+                    if (el0.id === 'fork-topmenu-panel') {
+                        const btn = document.getElementById('fork-topmenu-close');
+                        if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                    } else {
+                        const drawer = el0.closest('.drawer');
+                        const toggle = drawer && drawer.querySelector('.drawer-toggle');
+                        if (toggle) {
+                            toggle.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                        } else {
+                            el0.classList.remove('openDrawer');
+                            el0.classList.add('closedDrawer');
+                        }
+                    }
+                }, 160);
+            } else {
+                // Spring back.
+                el0.style.transition = 'transform 0.18s ease-out';
+                el0.style.transform = '';
+                setTimeout(() => { el0.style.transition = ''; }, 200);
+            }
+        });
+}
+
 // --- Settings UI -----------------------------------------------------------
 
 function camelToKebab(str) {
@@ -615,7 +715,7 @@ function addSettings() {
                 <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
                 <span>Collapse top bar icons into a ⋮ menu</span>
             </label>
-            <small>Fork Mobile — v0.2.29 (top bar menu · home font · portrait cards)</small>
+            <small>Fork Mobile — v0.2.30 (top bar menu · home font · portrait cards · swipe-close)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -669,8 +769,9 @@ jQuery(async () => {
     addSettings();
     initLongMessages();
     initComposeMode();
+    initSwipeClose();
 
-    console.log('[fork-mobile] active v0.2.29 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
+    console.log('[fork-mobile] active v0.2.30 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
 });
 
 export function init() {
@@ -685,5 +786,6 @@ export function init() {
         keepForkPinned();
         initLongMessages();
         initComposeMode();
+        initSwipeClose();
     });
 }

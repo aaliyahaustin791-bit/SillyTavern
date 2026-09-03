@@ -344,6 +344,14 @@
     letter-spacing: 0.1px;
 }
 
+/* ===== Swipe-to-close support (fork-mobile v0.2.30) =====
+   Keep open drawers/menus from chaining scroll to the page behind while the
+   pull-down gesture is active. */
+.drawer-content.openDrawer,
+#fork-topmenu-panel {
+    overscroll-behavior-y: contain;
+}
+
 /* ===== Chat message portraits (fork-mobile v0.2.29): 84x112 rounded-rect
    cards with a dark bottom gradient — replace the round 50px bubbles ===== */
 #chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage) {
