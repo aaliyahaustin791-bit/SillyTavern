@@ -615,7 +615,7 @@ function addSettings() {
                 <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
                 <span>Collapse top bar icons into a ⋮ menu</span>
             </label>
-            <small>Fork Mobile — v0.2.25 (mobile overhaul + top bar menu)</small>
+            <small>Fork Mobile — v0.2.26 (mobile overhaul + top bar menu + home font)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -639,6 +639,17 @@ function addSettings() {
     });
 }
 
+// --- Home typography: Playfair Display for names/labels --------------------
+// Loaded once via Google Fonts <link> (no core index.html edit needed).
+function injectHomeFont() {
+    if (document.getElementById('fork-home-font')) return;
+    const link = document.createElement('link');
+    link.id = 'fork-home-font';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&display=swap';
+    document.head.appendChild(link);
+}
+
 // --- Init -------------------------------------------------------------------
 
 jQuery(async () => {
@@ -649,6 +660,7 @@ jQuery(async () => {
     saveSettingsDebounced();
 
     injectCriticalCss();
+    injectHomeFont();
     applyMobileHooks();
     topmenuApplyAttr();
     buildFab();
@@ -658,13 +670,14 @@ jQuery(async () => {
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active v0.2.25 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
+    console.log('[fork-mobile] active v0.2.26 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
 });
 
 export function init() {
     // Re-run when the extension is toggled on.
     jQuery(async () => {
         injectCriticalCss();
+        injectHomeFont();
         applyMobileHooks();
         topmenuApplyAttr();
         buildFab();

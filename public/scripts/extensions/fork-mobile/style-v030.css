@@ -308,3 +308,24 @@
     border-radius: 50%;
     background: #4ade80;
 }
+
+/* ===== Home typography (fork-mobile v0.2.26): Playfair Display ===== */
+.welcomePanel .recentChatList .recentChat .characterName,
+.welcomePanel .recentChatsTitle,
+.welcomePanel .welcomeHeader .openTemporaryChat {
+    font-family: 'Playfair Display', var(--mainFontFamily);
+}
+
+.welcomePanel .recentChatList .recentChat .characterName {
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.welcomePanel .recentChatsTitle {
+    font-weight: 700;
+}
+
+.welcomePanel .welcomeHeader .openTemporaryChat {
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
