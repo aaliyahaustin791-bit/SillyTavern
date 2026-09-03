@@ -329,3 +329,17 @@
     font-weight: 600;
     letter-spacing: 0.2px;
 }
+
+/* Greeting + tagline also Playfair (v0.2.27) — hero in heavy roman,
+   tagline in italic for the storybook feel. */
+.welcomePanel .welcomeGreeting {
+    font-family: 'Playfair Display', var(--mainFontFamily);
+    font-weight: 800;
+}
+
+.welcomePanel .welcomeTagline {
+    font-family: 'Playfair Display', var(--mainFontFamily);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: 0.1px;
+}
