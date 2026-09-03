@@ -344,18 +344,35 @@
     letter-spacing: 0.1px;
 }
 
-/* ===== Chat message portraits (fork-mobile v0.2.28): 50px -> 64px ===== */
+/* ===== Chat message portraits (fork-mobile v0.2.29): 84x112 rounded-rect
+   cards with a dark bottom gradient — replace the round 50px bubbles ===== */
 #chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage) {
-    width: 64px !important;
-    height: 64px !important;
+    width: 84px !important;
+    height: 112px !important;
     flex: 0 0 auto !important;
+    position: relative !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
 }
 
 #chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage) img {
-    width: 64px !important;
-    height: 64px !important;
+    width: 84px !important;
+    height: 112px !important;
+    object-fit: cover !important;
+    object-position: center top !important;
+    border-radius: 16px !important;
+}
+
+#chat .mes .mesAvatarWrapper .avatar:not(.avatar_collage)::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border-radius: inherit !important;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 45%) !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
 }
 
 #chat .mes.last_mes .mesAvatarWrapper {
-    padding-bottom: 64px !important;
+    padding-bottom: 112px !important;
 }
