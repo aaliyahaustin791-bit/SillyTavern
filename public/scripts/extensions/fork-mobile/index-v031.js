@@ -642,10 +642,11 @@ function addSettings() {
 // --- Init -------------------------------------------------------------------
 
 jQuery(async () => {
-    if (!Object.hasOwn(extension_settings, extensionName)) {
-        extension_settings[extensionName] = { ...defaultSettings };
-        saveSettingsDebounced();
-    }
+    // Merge defaults PER KEY — existing installs have extension_settings saved
+    // WITHOUT new keys (e.g. topCollapse added in v0.2.25); a whole-object
+    // `if (!hasOwn)` guard never fills them in, so new features silently no-op.
+    extension_settings[extensionName] = { ...defaultSettings, ...extension_settings[extensionName] };
+    saveSettingsDebounced();
 
     injectCriticalCss();
     applyMobileHooks();
