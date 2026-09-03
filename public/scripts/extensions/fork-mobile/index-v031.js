@@ -10,6 +10,7 @@ const extensionName = 'fork-mobile';
 const defaultSettings = {
     fabEnabled: true,
     collapseLong: true,
+    topCollapse: true,
 };
 
 // --- Compose mode: toggle an attribute while typing (no hiding) -----------
@@ -142,6 +143,58 @@ function injectCriticalCss() {
             height: 260px !important;
             max-height: 260px !important;
             z-index: 1999 !important;
+        }
+        /* Top-bar collapse: hide the drawer icon row, keep the drawer contents
+           (they are absolutely positioned and must stay reachable). */
+        html[data-fork-topmenu="1"] #top-settings-holder > .drawer > .drawer-toggle {
+            display: none !important;
+        }
+        html[data-fork-topmenu="1"] #top-settings-holder {
+            justify-content: flex-end !important;
+            padding-right: calc(10px + env(safe-area-inset-right)) !important;
+        }
+        #fork-topmenu-btn {
+            width: 40px !important;
+            height: 40px !important;
+            flex: 0 0 auto !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 20px !important;
+            cursor: pointer !important;
+            color: var(--SmartThemeBodyColor, #fff) !important;
+            background: var(--SmartThemeBlurTintColor, rgba(255,255,255,0.08)) !important;
+            border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important;
+            user-select: none !important;
+            align-self: center !important;
+        }
+        /* Panel + backdrop: top-anchored fixed (bottom:0 is unreliable in this
+           environment), z-index above rpg-companion's 999999 widget. */
+        #fork-topmenu-panel {
+            position: fixed !important;
+            bottom: auto !important;
+            left: auto !important;
+            right: calc(8px + env(safe-area-inset-right)) !important;
+            width: min(300px, calc(100vw - 16px)) !important;
+            max-height: 68dvh !important;
+            overflow-y: auto !important;
+            z-index: 1000001 !important;
+            background: var(--main-surface, #1e1e2e) !important;
+            border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important;
+            border-radius: 16px !important;
+            padding: 8px !important;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
+        }
+        #fork-topmenu-backdrop {
+            position: fixed !important;
+            top: 0 !important;
+            bottom: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 100vh !important;
+            background: rgba(0, 0, 0, 0.45) !important;
+            z-index: 1000000 !important;
         }
     `;
     const style = document.createElement('style');
@@ -289,7 +342,7 @@ function keepForkPinned() {
             document.documentElement.style.transform = 'none';
             console.log('[fork-mobile] neutralized html identity transform');
         }
-        for (const id of ['fork-fab', 'fork-sheet', 'fork-backdrop']) {
+        for (const id of ['fork-fab', 'fork-sheet', 'fork-backdrop', 'fork-topmenu-panel', 'fork-topmenu-backdrop']) {
             const el = document.getElementById(id);
             if (el && el.parentElement !== document.documentElement) {
                 document.documentElement.appendChild(el);
@@ -400,6 +453,147 @@ function buildFab() {
     $(document).on('click', '#fork-sheet-close', close);
 }
 
+// --- Collapsible top bar: drawer icon row -> one menu button ---------------
+// When topCollapse is on, every .drawer-toggle in #top-settings-holder is
+// hidden (CSS) and a single ⋮ button takes their place. Tapping it opens a
+// dropdown panel listing all drawer actions (icons + labels, rebuilt fresh on
+// every open so statuses/connection colors are current). Selecting an item
+// clicks the REAL .drawer-toggle, so ST's own open/close logic (closing other
+// drawers, pinned panels, icon state classes) runs untouched. Drawer contents
+// are never hidden — only their header icons are.
+
+function topmenuApplyAttr() {
+    document.documentElement.dataset.forkTopmenu = extension_settings[extensionName].topCollapse ? '1' : '0';
+}
+
+function topmenuCollectItems() {
+    const items = [];
+    // The 9 stock drawers: each .drawer wraps a .drawer-toggle (icon) and a
+    // .drawer-content (panel). The content stays in place; we only drive the
+    // toggle.
+    document.querySelectorAll('#top-settings-holder > .drawer').forEach((drawer) => {
+        const toggle = drawer.querySelector('.drawer-toggle');
+        const iconEl = drawer.querySelector('.drawer-icon');
+        const content = drawer.querySelector('.drawer-content');
+        if (!toggle || !iconEl) return;
+        // FA glyph classes only — drop the drawer state classes and fixed-width.
+        const iconClasses = [...iconEl.classList].filter(c => !['drawer-icon', 'closedIcon', 'openIcon', 'fa-fw'].includes(c));
+        items.push({
+            title: iconEl.getAttribute('title') || drawer.id,
+            iconClasses,
+            active: () => !!content && content.classList.contains('openDrawer'),
+            run: () => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })),
+        });
+    });
+    // Anything extensions appended into #top-bar at runtime (rare; #top-bar is
+    // empty in stock HTML) — fold it into the menu too so nothing is orphaned.
+    const topBar = document.getElementById('top-bar');
+    if (topBar) {
+        [...topBar.children].forEach((child) => {
+            if (child.id === 'fork-topmenu-btn') return;
+            const icon = child.querySelector('i') || child;
+            const iconClasses = icon.classList ? [...icon.classList].filter(c => c.startsWith('fa-')) : [];
+            items.push({
+                title: child.getAttribute('title') || (child.textContent || '').trim().slice(0, 40) || 'Button',
+                iconClasses,
+                active: () => false,
+                run: () => child.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })),
+            });
+        });
+    }
+    return items;
+}
+
+function buildTopMenu() {
+    if (!extension_settings[extensionName].topCollapse) {
+        return;
+    }
+    if (document.getElementById('fork-topmenu-btn')) {
+        return; // double-build guard (runs from boot IIFE AND init())
+    }
+
+    const btn = $('<div id="fork-topmenu-btn" title="Menu" data-i18n="[title]Menu">⋮</div>');
+    const panel = $('<div id="fork-topmenu-panel" class="fork-hidden"></div>');
+    const backdrop = $('<div id="fork-topmenu-backdrop" class="fork-hidden"></div>');
+
+    // Button rides inside the (now empty) top bar strip, right-aligned.
+    const holder = document.getElementById('top-settings-holder');
+    if (holder) {
+        holder.appendChild(btn[0]);
+    } else {
+        $('body').append(btn);
+    }
+    $('body').append(backdrop, panel);
+
+    const header = $('<div class="fork-topmenu-header"></div>');
+    header.append($('<span class="fork-topmenu-title"></span>').text('Menu'));
+    header.append($('<button id="fork-topmenu-close" class="fork-sheet-close">✕</button>'));
+    panel.append(header);
+
+    const open = () => {
+        // Rebuild rows on EVERY open: icon classes carry live state (API plug
+        // color, open/closed drawer states, titles, extension-added buttons).
+        const list = $('<div class="fork-topmenu-list"></div>');
+        for (const item of topmenuCollectItems()) {
+            const row = $('<div class="fork-topmenu-row"></div>');
+            const ic = $('<i class="fork-topmenu-ic"></i>');
+            for (const cls of item.iconClasses) ic.addClass(cls);
+            row.append(ic);
+            row.append($('<span class="fork-topmenu-label"></span>').text(item.title));
+            if (item.active()) {
+                row.addClass('fork-topmenu-active');
+                row.append($('<span class="fork-topmenu-dot" title="Open now"></span>'));
+            }
+            row.on('click', () => {
+                close();
+                item.run();
+            });
+            list.append(row);
+        }
+        panel.find('.fork-topmenu-list').remove();
+        panel.append(list);
+
+        // Top-anchored inline geometry (bottom anchoring is unreliable here).
+        const rootStyle = getComputedStyle(document.documentElement);
+        const barH = parseFloat(rootStyle.getPropertyValue('--topBarBlockSize')) || 44;
+        const pEl = panel[0];
+        const bEl = backdrop[0];
+        if (pEl) {
+            pEl.style.position = 'fixed';
+            pEl.style.top = Math.round(barH + 4) + 'px';
+            pEl.style.bottom = 'auto';
+            pEl.style.right = 'calc(8px + env(safe-area-inset-right))';
+            pEl.style.zIndex = '1000001';
+            pEl.style.display = 'block';
+        }
+        if (bEl) {
+            bEl.style.position = 'fixed';
+            bEl.style.top = '0';
+            bEl.style.bottom = 'auto';
+            bEl.style.left = '0';
+            bEl.style.right = '0';
+            bEl.style.height = '100vh';
+            bEl.style.zIndex = '1000000';
+            bEl.style.display = 'block';
+        }
+        panel.removeClass('fork-hidden');
+        backdrop.removeClass('fork-hidden');
+    };
+
+    const close = () => {
+        const pEl = panel[0];
+        const bEl = backdrop[0];
+        if (pEl) pEl.style.display = 'none';
+        if (bEl) bEl.style.display = 'none';
+        panel.addClass('fork-hidden');
+        backdrop.addClass('fork-hidden');
+    };
+
+    btn.on('click', open);
+    backdrop.on('click', close);
+    $(document).on('click', '#fork-topmenu-close', close);
+}
+
 // --- Settings UI -----------------------------------------------------------
 
 function camelToKebab(str) {
@@ -417,12 +611,16 @@ function addSettings() {
                 <input id="fork-collapse-long-toggle" type="checkbox" data-setting="collapseLong">
                 <span>Collapse long messages (tap to expand)</span>
             </label>
-            <small>Fork Mobile — v0.2.12 (Phase 1: mobile overhaul)</small>
+            <label for="fork-topcollapse-toggle" class="checkbox_label">
+                <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
+                <span>Collapse top bar icons into a ⋮ menu</span>
+            </label>
+            <small>Fork Mobile — v0.2.25 (mobile overhaul + top bar menu)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
 
-    $('#fork-fab-toggle, #fork-collapse-long-toggle').on('change', function () {
+    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle').on('change', function () {
         const key = $(this).attr('data-setting');
         extension_settings[extensionName][key] = $(this).prop('checked');
         // Await the ACTUAL save before reloading — saveSettingsDebounced is
@@ -435,7 +633,7 @@ function addSettings() {
     // `#fork-${camelToKebab(key)}-toggle` selector built `#fork-fab-enabled-toggle`
     // which doesn't exist (the id is `fork-fab-toggle`), so the FAB checkbox
     // NEVER showed its saved state and every toggle looked like it "reverted".
-    $('#fork-fab-toggle, #fork-collapse-long-toggle').each(function () {
+    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle').each(function () {
         const key = $(this).attr('data-setting');
         $(this).prop('checked', !!extension_settings[extensionName][key]);
     });
@@ -451,13 +649,15 @@ jQuery(async () => {
 
     injectCriticalCss();
     applyMobileHooks();
+    topmenuApplyAttr();
     buildFab();
+    buildTopMenu();
     keepForkPinned();
     addSettings();
     initLongMessages();
     initComposeMode();
 
-    console.log('[fork-mobile] active (v0.2.10)');
+    console.log('[fork-mobile] active v0.2.25 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
 });
 
 export function init() {
@@ -465,7 +665,9 @@ export function init() {
     jQuery(async () => {
         injectCriticalCss();
         applyMobileHooks();
+        topmenuApplyAttr();
         buildFab();
+        buildTopMenu();
         keepForkPinned();
         initLongMessages();
         initComposeMode();

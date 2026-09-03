@@ -237,3 +237,74 @@
     font-size: 15px;
     font-weight: 500;
 }
+
+/* ===== Top bar collapse menu (fork-mobile v0.2.25) ===== */
+.fork-topmenu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
+    margin-bottom: 6px;
+}
+
+.fork-topmenu-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text, #cdd6f4);
+}
+
+.fork-topmenu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fork-topmenu-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--text, #cdd6f4);
+    min-height: 40px;
+    user-select: none;
+}
+
+.fork-topmenu-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fork-topmenu-row:active {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.fork-topmenu-row.fork-topmenu-active {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.fork-topmenu-ic {
+    width: 22px;
+    text-align: center;
+    font-size: 16px;
+    flex: 0 0 auto;
+    opacity: 0.85;
+}
+
+.fork-topmenu-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fork-topmenu-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+}
