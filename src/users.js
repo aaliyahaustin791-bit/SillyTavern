@@ -1100,7 +1100,11 @@ function createExtensionsRouteHandler(directoryFn) {
             }
             const existsLocal = fs.existsSync(localPath);
             if (existsLocal) {
-                return res.sendFile(filePath, { root: directory });
+                // no-store: extension JS/CSS must never be served from browser
+                // cache — Kiwi heuristically cached stale extension builds and
+                // "fixes" silently didn't take (fork core edit, mirrors the
+                // public/ static no-store in server-main.js).
+                return res.sendFile(filePath, { root: directory, headers: { 'Cache-Control': 'no-store' } });
             }
 
             const globalPath = path.join(PUBLIC_DIRECTORIES.globalExtensions, filePath);
@@ -1109,7 +1113,7 @@ function createExtensionsRouteHandler(directoryFn) {
             }
             const existsGlobal = fs.existsSync(globalPath);
             if (existsGlobal) {
-                return res.sendFile(filePath, { root: PUBLIC_DIRECTORIES.globalExtensions });
+                return res.sendFile(filePath, { root: PUBLIC_DIRECTORIES.globalExtensions, headers: { 'Cache-Control': 'no-store' } });
             }
 
             return res.sendStatus(404);
