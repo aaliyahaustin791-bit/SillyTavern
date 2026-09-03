@@ -75,11 +75,9 @@ body.bubblechat .welcomePanel {
 .welcomePanel .welcomeGreeting {
     font-size: calc(var(--mainFontSize) * 1.65);
     font-weight: 700;
-    line-height: 1.15;
+    line-height: 1.2;
     letter-spacing: -0.3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }
 
 .welcomePanel .welcomeTagline {

@@ -320,10 +320,8 @@ async function sendWelcomePanel(chats, expand = false) {
             console.error('Chat element not found');
             return;
         }
-        const now = new Date();
-        const hour = now.getHours();
-        // fork-home v1: time-aware greeting hero (edit strings here to customize)
-        const greeting = hour < 5 ? 'Up late?' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        // fork-home v1: home greeting + tagline (edit strings here to customize)
+        const greeting = 'Welcome To MobileTavern';
         const templateData = {
             chats,
             empty: !chats.length,
