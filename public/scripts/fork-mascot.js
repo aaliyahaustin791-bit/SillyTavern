@@ -275,6 +275,11 @@
 
     /* heartbeat: track home enter/leave, schedule greet + idle life */
     setInterval(function () {
+        /* prune stale tap timestamps EVERY tick — they only used to expire on
+           the next tap push, so one tap permanently blocked the greeting and
+           idle gates (S.taps.length === 0 was never true again). */
+        var nowMs = Date.now();
+        S.taps = S.taps.filter(function (t) { return nowMs - t < 2600; });
         var home = isHome();
         if (home && !S.home) {
             S.home = true;
