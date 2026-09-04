@@ -453,3 +453,43 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
         min-width: 26px;
     }
 }
+
+/* ===== Bottom mascot (chibi tavern greeter) =====
+   Sits at the very bottom of the home column: .welcomeRecent has flex:1 so
+   the free space stretches the list area and the mascot, as the panel's last
+   child, hugs the bottom edge. Decorative only — pointer-events: none so it
+   can never eat taps meant for the list above it. */
+
+.welcomePanel .welcomeMascot {
+    flex: 0 0 auto;
+    margin-top: auto;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: flex-end;
+    padding: 8px 0 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+.welcomePanel .welcomeMascot img {
+    width: auto;
+    height: auto;
+    max-width: 72%;
+    max-height: clamp(130px, 24vh, 210px);
+    object-fit: contain;
+    filter: drop-shadow(0 8px 18px var(--black50a));
+    animation: forkMascotFloat 4.5s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes forkMascotFloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-7px); }
+}
+
+@media screen and (max-width: 900px) {
+    .welcomePanel .welcomeMascot img {
+        max-height: clamp(110px, 22vh, 170px);
+    }
+}
