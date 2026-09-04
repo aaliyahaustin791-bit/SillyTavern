@@ -35,6 +35,7 @@
         scrollMoved: 0,
         scrollTimer: null,
         scrollCooldown: 0,
+        sinceRare: 0,       // pity counter: non-rare lines raise the rare odds
     };
 
     /* ---------- tiny DOM helpers ---------- */
@@ -295,6 +296,13 @@
 
     /* ---------- line selection ---------- */
 
+    /* rare lines start at 2% but pity-climb: +1pt per non-rare line, capped
+       at 30% — she will always EVENTUALLY share a secret instead of being a
+       pure slot machine (verified 2026-09-03: user 'still waiting') */
+    function rareChance() {
+        return Math.min(0.02 + 0.01 * S.sinceRare, 0.30);
+    }
+
     function makeLine(preferGreeting) {
         if (preferGreeting) {
             if (S.awayMs >= 0) { /* returning visitor, not a fresh page load */
@@ -304,13 +312,15 @@
             return hourGreeting();
         }
         var st = shelfStats();
+        var wasRare = false;
         var attempts = 0;
         while (attempts < 6) {
             attempts++;
             var r = Math.random();
             var line = null;
-            if (r < 0.02) {
+            if (r < rareChance()) {
                 line = rareLine();
+                wasRare = true;
             } else if (r < 0.27) {
                 line = hourGreeting();
             } else if (r < 0.52) {
@@ -321,8 +331,12 @@
             } else {
                 line = cuteLine();
             }
-            if (line && line !== S.lastLine) { return line; }
+            if (line && line !== S.lastLine) {
+                S.sinceRare = wasRare ? 0 : S.sinceRare + 1;
+                return line;
+            }
         }
+        S.sinceRare += 1;
         return cuteLine();
     }
 
