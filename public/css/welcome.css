@@ -493,3 +493,93 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
         max-height: clamp(110px, 22vh, 170px);
     }
 }
+
+/* ===== Momo-chan is ALIVE (interactive greeter, 2026-09-03) =====
+   Tap her: hop + speech bubble. 5 quick taps: hidden reaction. She greets
+   once per home visit and whispers idle lines now and then. All local. */
+
+.welcomePanel .welcomeMascot {
+    position: relative;
+    pointer-events: none; /* container stays inert — only her img is tappable */
+}
+
+.welcomePanel .welcomeMascot img {
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.welcomePanel .welcomeMascot img.mascot-bounce {
+    animation: forkMascotHop 0.55s ease;
+}
+
+.welcomePanel .welcomeMascot img.mascot-ultra {
+    animation:
+        forkMascotFloat 4.5s ease-in-out infinite,
+        forkMascotGlow 0.9s linear 4;
+}
+
+@keyframes forkMascotHop {
+    0%   { transform: translateY(0) rotate(0deg) scale(1); }
+    30%  { transform: translateY(-16px) rotate(-3deg) scale(1.04); }
+    55%  { transform: translateY(-6px) rotate(2deg) scale(0.99); }
+    75%  { transform: translateY(-11px) rotate(-1deg) scale(1.02); }
+    100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+@keyframes forkMascotGlow {
+    0%   { filter: drop-shadow(0 8px 18px var(--black50a)) hue-rotate(0deg) saturate(1.3); }
+    50%  { filter: drop-shadow(0 8px 22px var(--SmartThemeQuoteColor)) hue-rotate(45deg) saturate(1.6); }
+    100% { filter: drop-shadow(0 8px 18px var(--black50a)) hue-rotate(0deg) saturate(1.3); }
+}
+
+/* Speech bubble — anchored above her halo, rides the column with her */
+
+.welcomePanel .welcomeMascot .mascotBubble {
+    position: absolute;
+    bottom: calc(100% + 14px);
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    max-width: min(290px, 92%);
+    min-width: 120px;
+    box-sizing: border-box;
+    padding: 8px 14px;
+    text-align: center;
+    font-size: calc(var(--mainFontSize) * 0.92);
+    line-height: 1.4;
+    color: var(--SmartThemeMainTextColor);
+    background-color: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 16px;
+    box-shadow: 0 8px 20px var(--black50a);
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 30;
+}
+
+.welcomePanel .welcomeMascot .mascotBubble.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.welcomePanel .welcomeMascot .mascotBubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border: 6px solid transparent;
+    border-top-color: var(--SmartThemeBlurTintColor);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .welcomePanel .welcomeMascot img.mascot-bounce,
+    .welcomePanel .welcomeMascot img.mascot-ultra {
+        animation: none;
+    }
+    .welcomePanel .welcomeMascot .mascotBubble {
+        transition: none;
+    }
+}
