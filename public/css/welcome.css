@@ -507,10 +507,15 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     pointer-events: auto;
     cursor: pointer;
     touch-action: manipulation;
+    transform-origin: bottom center; /* rotations read as leaning/waving */
 }
 
 .welcomePanel .welcomeMascot img.mascot-bounce {
     animation: forkMascotHop 0.55s ease;
+}
+
+.welcomePanel .welcomeMascot img.mascot-wave {
+    animation: forkMascotWave 0.8s ease;
 }
 
 .welcomePanel .welcomeMascot img.mascot-ultra {
@@ -525,6 +530,15 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     55%  { transform: translateY(-6px) rotate(2deg) scale(0.99); }
     75%  { transform: translateY(-11px) rotate(-1deg) scale(1.02); }
     100% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+@keyframes forkMascotWave {
+    0%   { transform: rotate(0deg); }
+    20%  { transform: rotate(-8deg); }
+    40%  { transform: rotate(8deg); }
+    60%  { transform: rotate(-5deg); }
+    80%  { transform: rotate(3deg); }
+    100% { transform: rotate(0deg); }
 }
 
 @keyframes forkMascotGlow {
@@ -576,6 +590,7 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 
 @media (prefers-reduced-motion: reduce) {
     .welcomePanel .welcomeMascot img.mascot-bounce,
+    .welcomePanel .welcomeMascot img.mascot-wave,
     .welcomePanel .welcomeMascot img.mascot-ultra {
         animation: none;
     }
