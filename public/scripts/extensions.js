@@ -431,11 +431,17 @@ async function callExtensionHook(name, hookName) {
         return;
     }
 
-    // MUST match addExtensionScript's URL (including the ?v= cache-bust) —
-    // a different query string makes the browser treat it as a different
-    // module and re-executes the extension's top-level code (duplicate
-    // settings blocks, duplicate FABs, double event listeners).
-    const url = `/scripts/extensions/${name}/${manifest.js}?v=${manifest.version ?? ''}`;
+    // ⚠️ FORK FIX (2026-09-11): do NOT add a cache-busting query string here.
+    // A query makes the browser treat `<file>?v=x` as a DIFFERENT module than the
+    // same file imported by its siblings via a relative path (e.g. an extension's
+    // submodule doing `import {...} from '../../index.js'`). That spawns a SECOND
+    // instance of the extension's entry module, which then starts evaluating inside
+    // the first instance's import cycle → uninitialised live bindings → TDZ
+    // "Cannot access 'x' before initialization" → the extension dies mid-evaluation
+    // and silently builds no UI. Broke Guided Generations AND the TTS extension.
+    // Freshness is already guaranteed by `Cache-Control: no-store` on both the
+    // public static route (server-main.js) and the data-extension route (users.js).
+    const url = `/scripts/extensions/${name}/${manifest.js}`;
     console.debug(`callExtensionHook: Calling hook "${hookName}" (function "${hookFunctionName}") for extension "${name}"`);
 
     try {
@@ -823,7 +829,9 @@ function addExtensionScript(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        const url = `/scripts/extensions/${name}/${manifest.js}?v=${manifest.version ?? ''}`;
+        // No `?v=` cache-bust: it would make this module a different instance from
+        // the one other extension files import by relative path (see callExtensionHook).
+        const url = `/scripts/extensions/${name}/${manifest.js}`;
         const id = sanitizeSelector(`${name}-js`);
         let ready = false;
 

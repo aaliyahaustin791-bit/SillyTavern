@@ -595,27 +595,78 @@ function buildTopMenu() {
 }
 
 // --- Swipe-down to close: settings drawers + the top-bar menu ---------------
-// Mobile gesture (v0.2.30): with the top bar collapsed, open drawer panels have
-// no visible close icon (their .drawer-toggle is hidden), so closing meant
-// hunting menu buttons. Pull any open .drawer-content (or the ⋮ menu panel)
-// down from its top like a sheet: >80px of downward drag = close via ST's own
-// toggle click; otherwise it springs back. Only engages when the panel is
-// scrolled to the very top, so inner scrolling is never hijacked.
+// Mobile gesture: with the top bar collapsed, open drawer panels have no visible
+// close icon (their .drawer-toggle is hidden), so closing meant hunting menu
+// buttons. Pull any open .drawer-content (or the ⋮ menu panel) down like a sheet:
+// a long downward pull closes via ST's own toggle click.
+//
+// ⚠️ SENSITIVITY FIX (2026-09-11) — v1 dismissed the panel while people were just
+// scrolling presets. Two causes, both fixed here:
+//   1. It trusted ONE scrollTop (the panel's own). ST nests scroll areas (prompt
+//      manager, preset editor, floated sections) and on mobile the panel itself
+//      often never scrolls while an inner box (or the document) does — so the
+//      "scrolled to top" gate stayed green mid-list and every downward stroke
+//      dismissed the pane. Now EVERY scrollable box between the touch point and
+//      the document is snapshotted, and the gesture ABORTS the instant any of
+//      them moves: real scrolling always wins, only an overscroll at the very
+//      top can reach the dismiss threshold.
+//   2. 80px of 1:1 finger travel was far too easy to hit. Now: 26px dead zone,
+//      panel follows at 55% (heavier feel), strict vertical intent
+//      (|dy| > 1.4|dx|), and 120px of raw travel required to actually close.
 
 function initSwipeClose() {
     if (!(isMobile() || mobileQuery.matches)) {
         return; // desktop keeps mouse/dots/X workflows
     }
 
-    const CLOSE_PX = 80;
+    const CLOSE_PX = 120;     // raw downward travel required to dismiss
+    const DEAD_ZONE = 26;     // no visual movement before this (scroll strokes stay untouched)
+    const RESISTANCE = 0.55;  // panel follows the finger at this fraction
+    const DOMINANCE = 1.4;    // |dy| must beat |dx| by this factor to count as vertical
+
     let startY = null;
     let startX = null;
     let el = null;
     let dragging = false;
+    let cancelled = false;
+    let scrollables = [];
+    let scrollSnapshot = [];
+
+    const docScroller = document.scrollingElement || document.documentElement;
 
     const isCloseable = (target) => {
         const $c = $(target).closest('.drawer-content.openDrawer, #fork-topmenu-panel:not(.fork-hidden)');
         return $c.length ? $c[0] : null;
+    };
+
+    // Every scrollable box from the touch point up to the document, plus the page
+    // scroller. We watch ALL of them: whichever one actually scrolls tells us the
+    // user is reading, not dismissing.
+    const collectScrollables = (target) => {
+        const out = [];
+        let n = target && target.nodeType === 1 ? target : (target ? target.parentElement : null);
+        while (n && n.nodeType === 1) {
+            const cs = getComputedStyle(n);
+            const oy = cs.overflowY;
+            if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && n.scrollHeight > n.clientHeight + 2) {
+                out.push(n);
+            }
+            n = n.parentElement;
+        }
+        if (!out.includes(docScroller)) out.push(docScroller);
+        return out;
+    };
+
+    // Only the panel's own scroll boxes block the gesture at touchstart; the page
+    // scroller is excluded so a scrolled document can never lock dismissal out
+    // permanently (a document scroll still aborts mid-gesture via scrollMoved).
+    const anyPaneScrolled = () => scrollables.some((s) => s !== docScroller && s.scrollTop > 1);
+    const scrollMoved = () => scrollables.some((s, i) => Math.abs(s.scrollTop - (scrollSnapshot[i] || 0)) > 1);
+
+    const springBack = (node) => {
+        node.style.transition = 'transform 0.18s ease-out';
+        node.style.transform = '';
+        setTimeout(() => { node.style.transition = ''; }, 220);
     };
 
     $(document).off('.forkSwipe')
@@ -624,47 +675,58 @@ function initSwipeClose() {
             if (!t) return;
             const candidate = isCloseable(e.target);
             if (!candidate) return;
-            // Only start from the top of a scrollable drawer; the ⋮ menu panel
-            // (a dropdown list) can be grabbed anywhere.
-            if (candidate.classList.contains('drawer-content') && candidate.scrollTop > 0) {
-                return;
-            }
+            scrollables = collectScrollables(e.target);
+            scrollSnapshot = scrollables.map((s) => s.scrollTop);
+            // Mid-list = the user is scrolling this pane; never take the gesture.
+            if (anyPaneScrolled()) return;
             startY = t.clientY;
             startX = t.clientX;
             el = candidate;
             dragging = false;
+            cancelled = false;
+            el.__forkRaw = 0;
             el.__forkDy = 0;
         })
         .on('touchmove.forkSwipe', function (e) {
-            if (!el) return;
+            if (!el || cancelled) return;
             const t = e.originalEvent.touches[0];
             if (!t) return;
+            // The moment anything scrolls under the finger, this is a scroll stroke.
+            if (scrollMoved()) {
+                cancelled = true;
+                if (dragging) springBack(el);
+                el = null;
+                dragging = false;
+                return;
+            }
             const dy = t.clientY - startY;
             const dx = t.clientX - startX;
             if (!dragging) {
                 // Horizontal intent or upward scroll = not our gesture.
-                if (Math.abs(dx) > Math.abs(dy) || dy < 0) {
+                if (Math.abs(dx) * DOMINANCE > Math.abs(dy) || dy < 0) {
                     el = null;
                     return;
                 }
-                if (dy > 10) {
-                    dragging = true;
-                    el.style.transition = 'none';
-                } else {
+                if (dy < DEAD_ZONE) {
                     return;
                 }
+                dragging = true;
+                el.style.transition = 'none';
             }
-            const pull = Math.max(0, dy);
+            const pull = Math.max(0, (dy - DEAD_ZONE) * RESISTANCE);
+            el.__forkRaw = dy;
             el.__forkDy = pull;
             el.style.transform = 'translateY(' + pull + 'px)';
         })
         .on('touchend.forkSwipe touchcancel.forkSwipe', function () {
             if (!el) return;
             const el0 = el;
-            const pull = el0.__forkDy || 0;
+            const raw = el0.__forkRaw || 0;
+            const wasCancelled = cancelled;
             el = null;
             dragging = false;
-            if (pull > CLOSE_PX) {
+            cancelled = false;
+            if (!wasCancelled && raw > CLOSE_PX) {
                 // Slide fully off, then close through the real toggle.
                 el0.style.transition = 'transform 0.16s ease-in';
                 el0.style.transform = 'translateY(100%)';
@@ -687,9 +749,7 @@ function initSwipeClose() {
                 }, 160);
             } else {
                 // Spring back.
-                el0.style.transition = 'transform 0.18s ease-out';
-                el0.style.transform = '';
-                setTimeout(() => { el0.style.transition = ''; }, 200);
+                springBack(el0);
             }
         });
 }
@@ -715,7 +775,7 @@ function addSettings() {
                 <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
                 <span>Collapse top bar icons into a ⋮ menu</span>
             </label>
-            <small>Fork Mobile — v0.2.30 (top bar menu · home font · portrait cards · swipe-close)</small>
+            <small>Fork Mobile — v0.2.31 (top bar menu · home font · portrait cards · swipe-close tolerates scrolling)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
