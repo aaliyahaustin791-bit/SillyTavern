@@ -30,6 +30,7 @@ const defaultSettings = {
     enabled: true,
     lorebookTarget: '',        // empty = use the current character's world
     maxContextMessages: 30,    // how many recent chat messages agents read
+    smithMaxTokens: 7000,      // Character Smith output budget (1 card per call)
 };
 
 function settings() {
@@ -236,7 +237,10 @@ async function runAgent(agent, input, { skipInput = false } = {}) {
         panel.showLoading(agent, `${agent.name} is thinking…`);
         const promptData = await agent.buildPrompt(ctx, input || '', runtime);
         const raw = await callModel({ ...promptData, maxTokens: agent.maxTokens || 2000 });
-        const result = agent.parseOutput(raw);
+        // parseOutput may be async (agents that run extra passes, e.g. Character
+        // Smith's field top-up) — await so both shapes work.
+        const result = await agent.parseOutput(raw, { ctx, input: input || '', callModel, agent });
+        if (typeof agent.onResult === 'function') agent.onResult(ctx, input || '', result);
         panel.showResult(agent, result, raw);
     } catch (err) {
         console.error('[fork-agents]', agent.id, err);
@@ -454,6 +458,16 @@ const panel = {
             console.warn('[fork-agents] renderResult failed', e);
             body.append(`<pre class="fa-pre">${escapeHtml(raw || '')}</pre>`);
         }
+        if (agent.conversational) {
+            // Inline follow-up box: turns the panel into a conversation loop.
+            // The agent's onResult hook stores the Q&A so follow-ups keep context.
+            const followupHint = escapeHtml(agent.followupPlaceholder || 'Ask a follow-up — the advisor remembers this conversation…');
+            body.append(`<div class="fa-followup" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(128,128,128,.35);display:flex;gap:8px;align-items:stretch;">
+                <textarea id="fa-followup-input" placeholder="${followupHint}" style="flex:1 1 auto;min-width:0;min-height:44px;max-height:96px;resize:vertical;background:rgba(0,0,0,.35);color:inherit;border:1px solid rgba(128,128,128,.4);border-radius:8px;padding:8px;font:inherit;font-size:14px;"></textarea>
+                <button id="fa-followup-clear" class="fa-btn" style="flex:0 0 auto;" title="Forget this chat's thread for this agent">Clear</button>
+                <button id="fa-followup-btn" class="fa-btn fa-btn-primary" style="flex:0 0 auto;">Ask</button>
+            </div>`);
+        }
         const actions = [];
         if (agent.apply) actions.push({ id: 'apply', label: agent.applyLabel || 'Apply', primary: true });
         actions.push({ id: 'copy', label: 'Copy' });
@@ -588,11 +602,45 @@ async function handlePanelAction(actionId) {
 }
 
 function resultToText(result, raw) {
+    if (typeof result?.text === 'string') return result.text;
     if (result?.entries) return JSON.stringify(result.entries, null, 2);
     if (result?.card) return JSON.stringify(result.card, null, 2);
     if (result && typeof result === 'object') return JSON.stringify(result, null, 2);
     return raw || '';
 }
+
+// Conversational follow-up (agents with `conversational: true`): the inline
+// Ask box re-runs the agent with the new input; the agent's onResult hook
+// stores the Q&A so the thread keeps context. Delegated on document so it
+// survives the panel's re-renders.
+$(document).on('click', '#fa-followup-btn', function () {
+    const agent = panel.agent;
+    if (!agent?.conversational) return;
+    const input = String($('#fa-followup-input').val() || '').trim();
+    if (!input) { toastr.info('Type a follow-up first.'); return; }
+    runAgent(agent, input, { skipInput: true });
+});
+$(document).on('click', '#fa-followup-clear', function () {
+    const agent = panel.agent;
+    if (!agent?.conversational) return;
+    if (agent.id === 'character-smith') {
+        clearSmithThread(getContext());
+        toastr.info('Cleared this chat’s Character Smith thread (draft card + interview answers).');
+        $('#fa-followup-input').val('');
+        return;
+    }
+    if (advisorMemory.delete(advisorChatKey(getContext()))) {
+        saveAdvisorMemory(advisorMemory);
+        toastr.info('Cleared this chat’s advisor memory.');
+    }
+    $('#fa-followup-input').val('');
+});
+$(document).on('keydown', '#fa-followup-input', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        $('#fa-followup-btn').trigger('click');
+    }
+});
 
 function buildPanel() {
     if (document.getElementById('fa-panel')) return;
@@ -776,75 +824,518 @@ Recent chat:
     },
 });
 
-// Character Smith — draft a full V2 character card from one line.
+// Character Smith — build a full V2 character card from a short idea.
+// The prompt is the Character & World Builder v2.0 method (the same one the
+// Hermes st-character-world-builder skill uses): prose over lists, field
+// FLOORS instead of ceilings, in-scene greetings, embedded-lorebook world
+// cards, and an interview mode for thin ideas. A second "top-up" pass in
+// parseOutput rewrites any field that still came back short — the direct fix
+// for cards that used to arrive bland, short and vague.
+
+const SMITH_MEMORY_KEY = 'fork-agents:smithMemory';
+const SMITH_MAX_CHATS = 12;
+const SMITH_MAX_TURNS = 6;
+
+function loadSmithMemory() {
+    try {
+        const raw = localStorage.getItem(SMITH_MEMORY_KEY);
+        if (!raw) return new Map();
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return new Map();
+        const map = new Map();
+        for (const [key, entry] of parsed) {
+            if (typeof key !== 'string' || !entry || typeof entry !== 'object') continue;
+            const turns = Array.isArray(entry.turns)
+                ? entry.turns.filter(t => t && typeof t.q === 'string' && typeof t.a === 'string').slice(-SMITH_MAX_TURNS)
+                : [];
+            map.set(key, {
+                card: entry.card && typeof entry.card === 'object' ? entry.card : null,
+                turns,
+                pendingQuestions: typeof entry.pendingQuestions === 'string' ? entry.pendingQuestions : '',
+            });
+        }
+        return map;
+    } catch {
+        return new Map();
+    }
+}
+
+function saveSmithMemory() {
+    try {
+        const trimmed = [...smithMemory.entries()].slice(-SMITH_MAX_CHATS);
+        localStorage.setItem(SMITH_MEMORY_KEY, JSON.stringify(trimmed));
+    } catch {
+        // storage unavailable — the thread stays in-page for this session
+    }
+}
+
+let smithMemory = loadSmithMemory();
+
+function smithChatKey(ctx) {
+    const g = ctx?.groupId ?? (ctx?.characterId === undefined ? (ctx?.chatId ?? '') : '');
+    if (g) return 'g:' + String(g);
+    return 'c:' + String(ctx?.characterId ?? '?');
+}
+
+function getSmithEntry(ctx) {
+    return smithMemory.get(smithChatKey(ctx)) || { card: null, turns: [], pendingQuestions: '' };
+}
+
+function setSmithEntry(ctx, entry) {
+    smithMemory.set(smithChatKey(ctx), entry);
+    saveSmithMemory();
+}
+
+function rememberSmithTurn(ctx, question, answer) {
+    const entry = getSmithEntry(ctx);
+    entry.turns = [...entry.turns, {
+        q: String(question || '').slice(0, 900),
+        a: String(answer || '').slice(0, 500),
+    }].slice(-SMITH_MAX_TURNS);
+    entry.pendingQuestions = '';
+    setSmithEntry(ctx, entry);
+}
+
+function rememberSmithCard(ctx, card) {
+    const entry = getSmithEntry(ctx);
+    entry.card = compactCard(card);
+    setSmithEntry(ctx, entry);
+}
+
+function clearSmithThread(ctx) {
+    if (smithMemory.delete(smithChatKey(ctx))) saveSmithMemory();
+}
+
+/** Bound what we keep in localStorage: enough to revise from, not a full copy. */
+function compactCard(card) {
+    const clip = (v, n) => String(v ?? '').slice(0, n);
+    const out = {
+        ch_name: clip(card.ch_name, 80),
+        description: clip(card.description, 2600),
+        personality: clip(card.personality, 800),
+        scenario: clip(card.scenario, 700),
+        first_mes: clip(card.first_mes, 1400),
+        mes_example: clip(card.mes_example, 1800),
+        creator_notes: clip(card.creator_notes, 900),
+        system_prompt: clip(card.system_prompt, 500),
+        post_history_instructions: clip(card.post_history_instructions, 500),
+        character_version: clip(card.character_version, 40),
+        talkativeness: clip(card.talkativeness, 8),
+        tags: Array.isArray(card.tags) ? card.tags.slice(0, 12).map(String) : [],
+        alternate_greetings: Array.isArray(card.alternate_greetings)
+            ? card.alternate_greetings.slice(0, 4).map(g => clip(g, 1000))
+            : [],
+    };
+    const entries = card?.character_book?.entries;
+    if (Array.isArray(entries) && entries.length) {
+        out.character_book = {
+            name: clip(card.character_book?.name, 80),
+            entry_outline: entries.slice(0, 30).map(e => ({
+                keys: Array.isArray(e?.keys) ? e.keys.slice(0, 5).map(String) : [],
+                comment: clip(e?.comment, 120),
+                constant: !!e?.constant,
+                insertion_order: Number(e?.insertion_order) || 0,
+            })),
+        };
+    }
+    return out;
+}
+
+/** Character & World Builder — the shared constitution for every mode. */
+const SMITH_RULES = `CHARACTER & WORLD BUILDER v2.0 — SillyTavern chara_card_v2.
+
+You are an expert character/world designer AND JSON developer for SillyTavern roleplay cards. You turn a short idea into a complete, playable card that reads like it was written by a novelist who has known this person for years.
+
+[NON-NEGOTIABLE WRITING RULES]
+1. PROSE OVER LISTS. Personality, behaviour, dress, items and relationships are ALWAYS natural-language prose. Never emit trait lists such as "cold, loyal, calculating". Show it instead: "She does not raise her voice because she has never needed to."
+2. NO VAGUE FILLER. Every sentence carries a specific, playable detail — a habit, a tell, a scar, a name, a debt, an object, a superstition. "Mysterious and dangerous" is a failure. "Still carries her brother's knife from the trial and checks the edge every morning" is a character.
+3. THE FIELD LENGTHS BELOW ARE FLOORS, NOT TARGETS. Write until the information is genuinely spent. A short, general card is a FAILED card. Never wrap up early to be safe, and never pad with restatement — add new, usable detail instead.
+4. OPEN IN SCENE. first_mes and every alternate greeting start mid-moment with the character present and active — speaking, doing, deciding. Never "Hello, I am X." Never a narrator's summary of them.
+5. {{user}} IS THE PLAYER. Never invent or narrate {{user}}'s history, feelings, words or decisions. Refer to them as {{user}}.
+6. ORIGINAL IDEAS: the user's idea is the only source of truth for facts. You MAY add small connective detail (a mother's name, a street, a shift pattern, a favoured drink) but it must be consistent and unremarkable, and must never contradict the idea.
+7. EXISTING PROPERTIES: use your canon knowledge, and state the exact era/version/arc in creator_notes so it can be corrected.
+8. ONE VOICE. Vocabulary, rhythm, verbal tics and the things this character would never say must stay consistent across description, personality, first_mes, alternate_greetings and mes_example.
+9. OUTPUT RULES: output ONLY the JSON object requested — no markdown, no code fences, no commentary before or after. Every bracket and brace closed. Do not truncate: a card cut off mid-field is worthless.`;
+
+/** Default mode: one independent character card (Schema 1). */
+const SMITH_CHARACTER_MODE = `[MODE: CHARACTER CARD — default]
+Output ONE JSON object, exactly these keys:
+{"ch_name":"","description":"","personality":"","scenario":"","first_mes":"","mes_example":"","creator_notes":"","system_prompt":"","post_history_instructions":"","character_version":"1.0","tags":[],"talkativeness":"0.5","alternate_greetings":[]}
+
+FIELD FLOORS (minimums — exceed them whenever the idea supports it):
+  ch_name → the name only, no title padding.
+  description → 300-500 words. THE SPINE OF THE CARD: SillyTavern sends this every turn, so it must stand alone. Cover all nine layers, woven into prose in this order:
+      1 IDENTITY — role, archetype, what they are for in this world.
+      2 APPEARANCE — four or more sentences: height, build, face, hair, eyes, skin, hands, one distinguishing physical detail, and how they hold themselves (posture, stillness, what their hands do while they talk).
+      3 PRESENT SITUATION — where they are now and what is currently pressing on them.
+      4 PERSONALITY — who they are and what drives them, in prose, contradictions included.
+      5 VOICE — speech patterns, vocabulary register, rhythm, verbal tics, and what they never say.
+      6 RELATIONSHIPS — name the people, and what each bond costs them.
+      7 DRESS & CARRIED THINGS — woven in naturally, never enumerated.
+      8 SECRETS — what they hide; what they will not admit even to themselves.
+      9 BEHAVIOUR — under pressure, in conflict, in intimacy, when caught off guard, when drunk or exhausted.
+    Open with presence, not taxonomy: "She moves through a crowd like the crowd already knows to step aside." — never "She is a tall woman with dark hair."
+  personality → 1-3 punchy lines, 60-120 tokens: the compressed spine of the description. Still prose, still specific, no lists.
+  scenario → "" UNLESS the user explicitly asked for an opening situation. Never invent one.
+  first_mes → 150-300 tokens. In-scene, in-voice, {{user}} addressed or implicated, and something to answer: a question, a demand, a situation mid-motion.
+  alternate_greetings → 2-3 strings, each 120-280 tokens. Same voice, genuinely DIFFERENT scene — different place, mood, stakes or era. Never a rephrase of first_mes.
+  mes_example → 320-550 words of <START> blocks, 3-5 exchanges, formatted as:
+      <START>
+      {{user}}: ...
+      {{char}}: ...
+    Show voice and behaviour in different registers: casual, angry, tender, refusing, caught off guard, and seductive if the card is intimate. Voice, not plot. Some {{char}} replies should be short, one word, or silence — real people are not always eloquent.
+  creator_notes → 150-300 words of direct instructions to the AI: tone, pacing, what to ALWAYS do, what to NEVER do (clichés to avoid), how to handle conflict and escalation, and the exact canon version if this is an existing character.
+  system_prompt → "" unless the user asked for an instruction block.
+  post_history_instructions → "" unless asked.
+  character_version → "1.0".
+  tags → 4-8 lowercase tags: genre, archetype, content descriptors.
+  talkativeness → "0.5" (0.3 reserved, 0.7 gregarious — it must match the personality).
+NO "character_book" and no lorebook in character mode.`;
+
+/** World mode: narrator/world card (Schema 2) with an embedded lorebook. */
+const SMITH_WORLD_MODE = `[MODE: WORLD CARD with embedded lorebook]
+Output ONE JSON object, exactly these keys:
+{"ch_name":"","description":"","personality":"","scenario":"","first_mes":"","mes_example":"","creator_notes":"","character_version":"1.0","tags":[],"talkativeness":"0.5","alternate_greetings":[],"character_book":{"name":"","description":"","scan_depth":4,"token_budget":2048,"recursive_scanning":true,"extensions":{},"entries":[]}}
+
+CARD FIELDS
+  description → the world primer, 1-2 paragraphs: place, era, what is happening, how power and danger work — plus the protagonist's appearance if there is one. NOTHING ELSE. No cast list, no location list, no history dump: those live in the lorebook.
+  personality → TONE ONLY — genre, emotional temperature, themes. "gothic dread; human cost over spectacle; nothing is ever cleanly won." NEVER character traits.
+  first_mes → an atmospheric narrator hook: texture, not scenario. Never "you are in X".
+  mes_example → 250-450 words of narrator/NPC exchanges showing the world's voice.
+  creator_notes → how to run this world: large-cast handling, pacing, genre rules, what never happens here.
+  scenario → "" (world cards have no scenario).
+
+EMBEDDED LOREBOOK — entries MUST be a JSON ARRAY (never a keyed object), each with EXACTLY these fields:
+  {"id":0,"keys":["Name","Name's","Titled Name"],"secondary_keys":[],"comment":"Name - Category","content":"...","constant":false,"selective":false,"insertion_order":100,"position":"after_char","enabled":true,"prevent_recursion":false,"extensions":{"uid":0,"addMemo":true,"useProbability":true}}
+  - id and extensions.uid increment together from 0. There is no "uid" outside extensions and no other identifier.
+  - NEVER use "key", "order", integer position, or "disable" — those are standalone-file field names and a card that mixes them imports with every entry silently dropped.
+  - enabled is ALWAYS true (omitting it disables the entry on import).
+  - selective is true ONLY when secondary_keys has values, otherwise false.
+  - No two entries may share an insertion_order.
+Write 8-20 entries across four layers:
+  L1 WORLD RULES — constant:true, prevent_recursion:true, position:"before_char", insertion_order 900-999. Prefix each rule with "RULE:" and use absolute language (MUST, CANNOT, WILL INSTANTLY). Keep them small: they load every turn.
+  L2 FACTION / CAST ANCHORS — constant:true, prevent_recursion:false, position:"before_char", insertion_order 700-899. One per faction, organisation, family or crew. Each MUST name every member plus at least one rival or ally by name, and say what they control and what they want. Naming members is what seeds recursion into the character entries. If the world has no factions, use role anchors: "The Protagonists", "The Antagonists", "The Supporting Cast".
+  L3 CHARACTERS — constant:false, prevent_recursion:false, position:"after_char", insertion_order 150-599 (protagonist 600-699, majors 400-599, the rest 150-249). Full entry per named character: appearance (3-4 sentences), personality as prose, voice, behaviour under pressure and in intimacy, relationships (name the people), dress and carried items, secrets.
+  L4 LOCATIONS / ITEMS / EVENTS / CONCEPTS — constant:false, position:"after_char", insertion_order 1-399 (locations 300-399, items 100-149, events 50-99, concepts 1-19). Locations MUST name the NPCs and items present — that is what makes the world chain open — and open with sensory detail (what you hear or smell before you see it). Items and events: prevent_recursion:true. Events: include "sticky": 5 for an active scene, 3 for a passing event, 15 for a permanent change.
+  keys → 2-5 natural variants, always including possessives and titles: ["Kael","Kael's","Captain Kael"]. Never a bare generic word like "city" or "warrior".
+Also keep recursive_scanning:true and scan_depth:4. Use token_budget 2048 for 8-20 entries, 4096 above that.`;
+
+/** Interview mode: the idea is too thin for a great card yet. */
+const SMITH_INTERVIEW_MODE = `[MODE: GUIDED INTERVIEW — the idea is too thin to build a great card yet]
+Output ONLY this JSON:
+{"questions":["...","..."]}
+Ask 5-8 questions that would actually change the card. Never ask for anything the user already told you. One line each, concrete, and add a short bracketed example answer when the question is abstract. Mix these categories:
+  - identity and role: who they are, what they do all day, what they are known for.
+  - want vs need: what they think they want, and what they actually need.
+  - the wound: the thing they regret, the loss that shaped them, the line they will not cross — or did.
+  - voice: a phrase they overuse, how they address strangers, what they never say.
+  - pressure and intimacy: who they become when cornered, and how they show affection.
+  - their relationship to {{user}}: how they met, what they want from {{user}}, what they hide from {{user}}.
+  - one or two world anchors if the setting matters: era, place, what is dangerous there.
+Do not ask about token counts, card mechanics, or anything the AI can decide itself (names of minor relatives, a street name, an outfit).`;
+
+const SMITH_FULL_DETAIL = 'FULL DETAIL REQUESTED: the lengths above become floors with no ceiling. Description may run 3-5 paragraphs, mes_example 5-8 exchanges, greetings 3 long scenes, creator_notes comprehensive. Write until the material is genuinely exhausted.';
+
+const SMITH_TOPUP_SYSTEM = SMITH_RULES + `
+
+[MODE: FIELD TOP-UP]
+A card was drafted and some fields came back too thin for play. You are rewriting ONLY the named fields — longer, denser and more specific — while preserving everything already established: the name, every fact, and the exact voice.
+Rules:
+- Do not contradict or replace established facts; deepen them (add history, habits, physical tells, named relationships, concrete objects, sensory detail).
+- Keep the same character voice and register in first_mes / alternate_greetings / mes_example.
+- Never pad with restatement, atmosphere without information, or synonyms of what is already there.
+- Output ONLY a JSON object containing the requested keys and nothing else.`;
+
+/** Word/char floors used to decide whether a field needs a top-up pass. */
+const SMITH_THIN = {
+    description: 1100,
+    personality: 240,
+    first_mes: 520,
+    mes_example: 950,
+    creator_notes: 520,
+};
+
+function smithThinFields(card) {
+    const out = [];
+    for (const [field, minChars] of Object.entries(SMITH_THIN)) {
+        if (String(card?.[field] || '').trim().length < minChars) out.push(field);
+    }
+    const greetings = Array.isArray(card?.alternate_greetings) ? card.alternate_greetings.filter(g => String(g || '').trim()) : [];
+    if (greetings.length < 2) out.push('alternate_greetings');
+    return out;
+}
+
+function smithWordCount(text) {
+    const s = String(text || '').trim();
+    return s ? s.split(/\s+/).length : 0;
+}
+
+/** Split an input line into a mode + the idea itself. */
+function parseSmithMode(input) {
+    const raw = String(input || '').trim();
+    let m = raw.match(/^(?:world|worldbuild|worldbook|lorebook|setting)\s*[:\-]\s*([\s\S]*)$/i);
+    if (m) return { mode: 'world', idea: m[1].trim(), explicit: true };
+    m = raw.match(/^(?:character|char|card)\s*[:\-]\s*([\s\S]*)$/i);
+    if (m) return { mode: 'character', idea: m[1].trim(), explicit: true };
+    return { mode: 'character', idea: raw, explicit: false };
+}
+
+function formatSmithTurns(turns) {
+    return turns.map((t, i) => `Q${i + 1}: ${t.q}\nA${i + 1}: ${t.a}`).join('\n');
+}
+
+/** Force a model's lorebook entries into the exact embedded shape ST expects.
+ *  Guards the "card imports but every entry is silently dropped" failure. */
+function normalizeSmithBook(book) {
+    const entries = Array.isArray(book?.entries) ? book.entries : [];
+    const out = {
+        name: String(book?.name || 'Embedded Lorebook'),
+        description: String(book?.description || ''),
+        scan_depth: Number(book?.scan_depth) || 4,
+        token_budget: Number(book?.token_budget) || 2048,
+        recursive_scanning: true,
+        extensions: {},
+        entries: [],
+    };
+    entries.forEach((raw, index) => {
+        if (!raw || typeof raw !== 'object') return;
+        const keys = (Array.isArray(raw.keys) ? raw.keys : Array.isArray(raw.key) ? raw.key : [raw.key])
+            .map(k => String(k ?? '').trim()).filter(Boolean);
+        const content = String(raw.content || '').trim();
+        if (!keys.length || !content) return;
+        const secondary = (Array.isArray(raw.secondary_keys) ? raw.secondary_keys
+            : Array.isArray(raw.keysecondary) ? raw.keysecondary
+                : Array.isArray(raw.secondary) ? raw.secondary : [])
+            .map(k => String(k ?? '').trim()).filter(Boolean);
+        const position = raw.position === 'before_char' || raw.position === 0 ? 'before_char' : 'after_char';
+        const order = Number.isFinite(Number(raw.insertion_order)) ? Number(raw.insertion_order)
+            : Number.isFinite(Number(raw.order)) ? Number(raw.order) : 100;
+        out.entries.push({
+            id: index,
+            keys,
+            secondary_keys: secondary,
+            comment: String(raw.comment || `${keys[0]} - ${raw.constant ? 'World' : 'Entry'}`),
+            content,
+            constant: !!raw.constant,
+            selective: secondary.length > 0,
+            insertion_order: order,
+            position,
+            enabled: raw.enabled === false ? true : true,
+            prevent_recursion: !!(raw.prevent_recursion ?? raw.preventRecursion),
+            extensions: {
+                uid: index,
+                addMemo: true,
+                useProbability: true,
+                ...(Number.isFinite(Number(raw.sticky)) && Number(raw.sticky) > 0 ? { sticky: Number(raw.sticky) } : {}),
+            },
+        });
+    });
+    return out;
+}
+
 registerAgent({
     id: 'character-smith',
     name: 'Character Smith',
     icon: '🛠️',
-    tagline: 'Draft a full V2 character card from one line',
+    tagline: 'Build a full V2 card with the Character & World Builder method',
     category: 'writer',
     phase: 'manual',
-    maxTokens: 3000,
+    // Output budget is a setting: a builder-grade card needs 3-6k tokens, and
+    // the old hardcoded 3000 was part of why cards came back thin.
+    get maxTokens() {
+        return Math.min(16000, Math.max(1500, Number(settings()?.smithMaxTokens) || 7000));
+    },
     needsInput: true,
-    inputPlaceholder: 'e.g. "a sarcastic tavern keeper who secretly runs the city guild"',
+    conversational: true,
+    inputPlaceholder: 'Describe the character — e.g. "a sarcastic tavern keeper who secretly runs the city guild". Prefix "world:" for a world card, or type "guided" to be interviewed first.',
+    followupPlaceholder: 'Refine it — e.g. "expand her backstory", "make him colder", "add two alternate greetings"…',
     applyLabel: 'Save character',
 
-    async buildPrompt(ctx, input) {
+    buildPrompt(ctx, input, rt) {
+        const raw = String(input || '').trim();
+        const forceDirect = raw.replace(/^skip\b[\s:,-]*/i, '');
+        const skipped = forceDirect !== raw;
+        const { mode: detected, idea, explicit } = parseSmithMode(skipped ? forceDirect : raw);
+        let entry = getSmithEntry(ctx);
+        const priorCard = entry.card;
+
+        // The previous interview's questions became this turn's answers.
+        if (entry.pendingQuestions && raw) {
+            rememberSmithTurn(ctx, entry.pendingQuestions, raw);
+            entry = getSmithEntry(ctx);
+        }
+        const hasAnswers = entry.turns.length > 0 && !priorCard;
+
+        const guidedWanted = !skipped && (/^(guided|grill me|interview|ask me|questions?)\b/i.test(raw)
+            || (!explicit && !priorCard && !hasAnswers && smithWordCount(idea) < 5));
+        const mode = explicit ? detected : (priorCard?.character_book ? 'world' : detected);
+
+        let systemPrompt = SMITH_RULES + '\n\n';
+        if (guidedWanted) systemPrompt += SMITH_INTERVIEW_MODE;
+        else if (mode === 'world') systemPrompt += SMITH_WORLD_MODE;
+        else systemPrompt += SMITH_CHARACTER_MODE;
+
+        const lines = [];
+        if (guidedWanted) {
+            lines.push(`INTERVIEW. The idea so far: ${idea || '(nothing yet — ask about whatever the recent scene suggests)'}`);
+        } else if (priorCard) {
+            lines.push('REVISION REQUEST. Here is the card you built earlier in this conversation, compacted:',
+                JSON.stringify(priorCard),
+                'Change ONLY what this turn asks for — keep every other established fact, name and voice exactly. Output the COMPLETE card again, every field in full. Never output a diff, a patch or a partial card.');
+            if (raw) lines.push(`This turn's instruction: ${raw}`);
+        } else if (hasAnswers) {
+            lines.push('Build the card now, using the interview answers below as the source of truth.');
+        } else {
+            lines.push(`Build the card from this idea: ${idea || '(no idea given — derive it from the recent scene)'}`);
+        }
+        if (!guidedWanted && entry.turns.length) {
+            lines.push(`Interview answers earlier in this conversation (treat as facts — never contradict them):\n${formatSmithTurns(entry.turns)}`);
+        }
+        if (/full detail|insane detail|max detail|maximum detail/i.test(raw)) lines.push(SMITH_FULL_DETAIL);
         const recentChat = getChatSnapshot(ctx, settings().maxContextMessages);
+        if (recentChat && !guidedWanted) {
+            lines.push(`Recent scene from the open chat — match its voice and tone, but do NOT import its events as facts about this card:\n${recentChat}`);
+        }
+        lines.push('Output ONLY the JSON object described above. No markdown, no code fences, no commentary.');
 
-        const systemPrompt = `You are the Character Smith, a character card designer for SillyTavern (V2 spec).
-Turn the user's idea into a complete, playable character card. Output ONLY valid JSON, no markdown, no commentary:
-{
-  "ch_name": "Name",
-  "description": "Vivid 2nd-person description: appearance, mannerisms, background, current situation (2-4 sentences).",
-  "personality": "Personality traits and speech style, one concise paragraph.",
-  "scenario": "The scene or setting where this character meets {{user}}.",
-  "first_mes": "The character's opening message: immersive, in-character, addresses {{user}} directly, 2-4 sentences of action and dialogue.",
-  "mes_example": "Example dialogue in SillyTavern format: <START>\\n{{char}}: ...\\n{{user}}: ...\\n<START>\\n...",
-  "system_prompt": "",
-  "post_history_instructions": "",
-  "creator_notes": "Brief author notes: inspiration, intended use.",
-  "character_version": "1.0",
-  "tags": ["genre", "theme", "trope"],
-  "talkativeness": "0.5",
-  "alternate_greetings": []
-}
-Rules: the JSON must be complete and valid; first_mes must hook the user immediately; personality must be distinct and consistent; do not reuse existing characters.`;
-
-        const prompt = `Create a character from this idea: {{input}}
-${recentChat ? `\nBase the voice and tone on this scene's style:\n{{recentChat}}` : ''}`;
-
-        return { systemPrompt, prompt: expandMacros(prompt, ctx, { input, recentChat }) };
+        return { systemPrompt, prompt: expandMacros(lines.join('\n\n'), ctx, { input: raw, recentChat }) };
     },
 
-    parseOutput(raw) {
+    async parseOutput(raw, rt) {
         const json = extractJson(raw);
-        const card = json?.card || json;
-        if (!card || typeof card !== 'object' || !String(card.ch_name || '').trim()) {
-            throw new Error('Model did not return a character card with a "ch_name".');
+        if (Array.isArray(json?.questions) && json.questions.length) {
+            return { questions: json.questions.map(q => String(q).trim()).filter(Boolean), text: raw };
         }
-        return { card };
+        const card = json?.card || json;
+        if (!card || typeof card !== 'object' || Array.isArray(card)) {
+            throw new Error('Model did not return a character card object.');
+        }
+        if (!card.ch_name && card.name) card.ch_name = card.name;
+        if (!String(card.ch_name || '').trim()) {
+            throw new Error('Model did not return a character card with a name.');
+        }
+        for (const field of ['description', 'personality', 'scenario', 'first_mes', 'mes_example', 'creator_notes', 'system_prompt', 'post_history_instructions']) {
+            card[field] = String(card[field] ?? '').trim();
+        }
+        if (!Array.isArray(card.tags)) card.tags = card.tags ? [String(card.tags)] : [];
+        if (!Array.isArray(card.alternate_greetings)) {
+            card.alternate_greetings = card.alternate_greetings ? [String(card.alternate_greetings)] : [];
+        }
+
+        // Top-up pass: any field that came back under the floor gets rewritten
+        // longer in one extra call, then merged back only if it really grew.
+        const thin = smithThinFields(card);
+        let toppedUp = [];
+        if (thin.length && typeof rt?.callModel === 'function') {
+            try {
+                const patchRaw = await rt.callModel({
+                    systemPrompt: SMITH_TOPUP_SYSTEM,
+                    prompt: [
+                        `Card so far (JSON):\n${JSON.stringify(compactCard(card))}`,
+                        `These fields are too thin and must be rewritten longer, denser and more specific: ${thin.join(', ')}`,
+                        thin.includes('alternate_greetings')
+                            ? 'For alternate_greetings output 3 strings, each a complete in-scene opener of 120-280 tokens, all different scenes.'
+                            : '',
+                        'Output ONLY a JSON object with those keys and nothing else.',
+                    ].filter(Boolean).join('\n\n'),
+                    maxTokens: 3000,
+                });
+                const patch = extractJson(patchRaw);
+                const fixed = patch?.card || patch;
+                if (fixed && typeof fixed === 'object') {
+                    for (const field of thin) {
+                        if (field === 'alternate_greetings') {
+                            const list = (Array.isArray(fixed.alternate_greetings) ? fixed.alternate_greetings : [])
+                                .map(g => String(g || '').trim()).filter(Boolean);
+                            if (list.length >= 2) { card.alternate_greetings = list; toppedUp.push(field); }
+                            continue;
+                        }
+                        const next = String(fixed[field] ?? '').trim();
+                        if (next.length > String(card[field] || '').length) { card[field] = next; toppedUp.push(field); }
+                    }
+                }
+            } catch (err) {
+                console.warn('[fork-agents] character smith top-up pass failed (keeping the drafted card)', err);
+            }
+        }
+        if (Array.isArray(card?.character_book?.entries) && card.character_book.entries.length) {
+            card.character_book = normalizeSmithBook(card.character_book);
+            if (!card.character_book.entries.length) delete card.character_book;
+        }
+        return { card, thin: smithThinFields(card), toppedUp };
+    },
+
+    onResult(ctx, input, result) {
+        if (result?.questions?.length) {
+            const entry = getSmithEntry(ctx);
+            entry.pendingQuestions = result.questions.join('\n');
+            setSmithEntry(ctx, entry);
+            return;
+        }
+        if (result?.card) {
+            rememberSmithTurn(ctx, input, `card: ${result.card.ch_name} (${smithWordCount(result.card.description)} word description)`);
+            rememberSmithCard(ctx, result.card);
+        }
     },
 
     renderResult(result) {
+        const warn = 'style="color:#e0a44a"';
+        if (result.questions?.length) {
+            return `
+            <div class="fa-card-preview">
+                <div class="fa-card-name">🛠️ Interview — ${result.questions.length} questions</div>
+                <div class="fa-card-row">Answer in the <b>Ask</b> box below — all at once is fine, one answer per line. Character Smith then builds the full card from your answers.</div>
+                <ol class="fa-qlist">${result.questions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ol>
+                <div class="fa-card-row"><i>Want a card straight away instead? Reply with the idea again, prefixed with "skip", e.g. "skip a knight who lost her order".</i></div>
+            </div>`;
+        }
         const c = result.card;
         const chip = (v) => v ? `<span class="fa-chip">${escapeHtml(v)}</span>` : '';
+        const stat = (label, text, floor) => {
+            const words = smithWordCount(text);
+            const short = floor !== undefined && String(text || '').trim().length < floor;
+            const count = `${words} words / ${String(text || '').length} chars`;
+            return `<div class="fa-card-row"><b>${label}</b> <span class="fa-count" ${short ? warn : ''}>${short ? '⚠ ' : ''}${count}</span></div>`;
+        };
+        const greetings = (c.alternate_greetings || []).filter(g => String(g || '').trim());
+        const book = c?.character_book?.entries || [];
+        const thinLeft = result.thin?.length
+            ? `<div class="fa-card-row" ${warn}><b>Still thin:</b> ${escapeHtml(result.thin.join(', '))} — ask a follow-up to expand them (e.g. "expand the description and example dialogue").</div>`
+            : '<div class="fa-card-row"><b>Detail check:</b> every field above its floor ✓</div>';
+        const block = (label, text) => String(text || '').trim()
+            ? `<details class="fa-card-block"><summary>${label}</summary><div class="fa-entry-content">${escapeHtml(String(text)).replace(/\n/g, '<br>')}</div></details>`
+            : '';
         return `
             <div class="fa-card-preview">
-                <div class="fa-card-name">${escapeHtml(c.ch_name || 'Unnamed')}</div>
-                <div class="fa-card-row"><b>Description:</b> ${escapeHtml(c.description || '—')}</div>
-                <div class="fa-card-row"><b>Personality:</b> ${escapeHtml(c.personality || '—')}</div>
-                <div class="fa-card-row"><b>Scenario:</b> ${escapeHtml(c.scenario || '—')}</div>
-                <div class="fa-card-row"><b>First message:</b> ${escapeHtml(c.first_mes || '—')}</div>
-                <div class="fa-card-row"><b>Example dialogue:</b> ${escapeHtml(c.mes_example || '—')}</div>
+                <div class="fa-card-name">${escapeHtml(c.ch_name || 'Unnamed')}${book.length ? ` <span class="fa-chip">world card · ${book.length} lorebook entries</span>` : ''}</div>
+                ${stat('Description', c.description, SMITH_THIN.description)}
+                ${stat('Personality', c.personality, SMITH_THIN.personality)}
+                ${stat('First message', c.first_mes, SMITH_THIN.first_mes)}
+                ${stat('Example dialogue', c.mes_example, SMITH_THIN.mes_example)}
+                ${stat('Creator notes', c.creator_notes, SMITH_THIN.creator_notes)}
+                <div class="fa-card-row"><b>Alternate greetings:</b> ${greetings.length ? chip(greetings.length + ' scenes') : '<span style="color:#e0a44a">⚠ none</span>'}</div>
+                ${c.scenario ? stat('Scenario', c.scenario) : '<div class="fa-card-row"><b>Scenario:</b> <i>empty (not requested)</i></div>'}
                 <div class="fa-card-row"><b>Tags:</b> ${(c.tags || []).map(t => chip(t)).join('') || '—'}</div>
+                ${result.toppedUp?.length ? `<div class="fa-card-row"><b>Top-up pass:</b> rewrote ${escapeHtml(result.toppedUp.join(', '))}</div>` : ''}
+                ${thinLeft}
+                ${book.length ? `<div class="fa-card-row"><b>Lorebook layers:</b> ${book.filter(e => e.constant).length} always-on · ${book.filter(e => !e.constant).length} keyword-triggered</div>` : ''}
+                ${block('Full description', c.description)}
+                ${block('First message', c.first_mes)}
+                ${block('Example dialogue', c.mes_example)}
+                ${greetings.length ? block(`Alternate greetings (${greetings.length})`, greetings.map((g, i) => `— ${i + 1} —\n${g}`).join('\n\n')) : ''}
+                ${block('Creator notes', c.creator_notes)}
+                ${book.length ? block('Lorebook entry keys', book.map((e, i) => `${i + 1}. ${(e.keys || []).join(' / ')}${e.constant ? ' [always on]' : ''} — ${e.comment}`).join('\n')) : ''}
             </div>`;
     },
 
     async apply(result, ctx) {
-        const card = result.card;
+        const card = result?.card;
+        if (!card) {
+            toastr.warning('Nothing to save yet — answer the interview in the Ask box first.');
+            return false;
+        }
         const name = String(card.ch_name || '').trim();
-        if (!name) { toastr.warning('Card has no ch_name.'); return false; }
+        if (!name) { toastr.warning('Card has no name.'); return false; }
 
         const body = {
             ch_name: name,
@@ -858,16 +1349,23 @@ ${recentChat ? `\nBase the voice and tone on this scene's style:\n{{recentChat}}
             post_history_instructions: String(card.post_history_instructions || ''),
             creator: 'Fork Agent (Character Smith)',
             character_version: String(card.character_version || '1.0'),
-            tags: Array.isArray(card.tags) ? card.tags.map(String).filter(Boolean) : [],
+            tags: Array.isArray(card.tags) ? card.tags.map(t => String(t).toLowerCase()).filter(Boolean) : [],
             talkativeness: String(card.talkativeness ?? '0.5'),
             world: '',
             depth_prompt_prompt: String(card.depth_prompt_prompt || ''),
             depth_prompt_depth: String(card.depth_prompt_depth ?? '4'),
             depth_prompt_role: String(card.depth_prompt_role || 'system'),
             fav: 'false',
-            alternate_greetings: Array.isArray(card.alternate_greetings) ? card.alternate_greetings : [],
+            alternate_greetings: Array.isArray(card.alternate_greetings) ? card.alternate_greetings.map(String).filter(Boolean) : [],
             extensions: '{}',
         };
+
+        // An embedded lorebook travels inside json_data: createCharacter keeps
+        // unknown json_data keys, and ST's own "Import Card Lore" flow turns
+        // character_book into a linked world-info file. (Verified against
+        // charaFormatData + convertCharacterBook in the fork's src/.)
+        const book = card?.character_book?.entries?.length ? card.character_book : null;
+        if (book) body.json_data = JSON.stringify({ data: { character_book: book } });
 
         try {
             const response = await fetch('/api/characters/create', {
@@ -880,14 +1378,292 @@ ${recentChat ? `\nBase the voice and tone on this scene's style:\n{{recentChat}}
                 toastr.error(`Character create failed (${response.status}). ${text.slice(0, 200)}`);
                 return false;
             }
-            const data = await response.json();
-            toastr.success(`Created "${data.name || name}" — find it in your character list.`);
+            await response.json().catch(() => ({}));
+            toastr.success(`Created "${name}" — find it in your character list.`);
+            if (book) {
+                toastr.info(`"${name}" carries ${book.entries.length} embedded lorebook entries. Open a chat with it and accept "import the embedded World/Lorebook", or use More… → Import Card Lore.`, 'Lorebook attached', { timeOut: 12000 });
+            }
             return true;
         } catch (err) {
             console.error('[fork-agents] character create failed', err);
             toastr.error(`Character create failed: ${err?.message || err}`);
             return false;
         }
+    },
+});
+
+
+// Story Advisor — conversational planning partner grounded in the open chat.
+// Reads the recent scene, remembers this session's Q&A per chat, and answers
+// planning / premise / character questions with evidence from canon.
+
+// Conversation memory: keyed by the open chat (character or group) so each
+// chat gets its own thread; capped at the last 5 exchanges. Persisted to
+// localStorage (survives reloads, still per-chat); falls back to in-page
+// memory only if storage is unavailable (private mode, quota).
+const ADVISOR_MEMORY_KEY = 'fork-agents:advisorMemory';
+const ADVISOR_MAX_TURNS = 5;
+const ADVISOR_MAX_CHATS = 20;
+
+function loadAdvisorMemory() {
+    try {
+        const raw = localStorage.getItem(ADVISOR_MEMORY_KEY);
+        if (!raw) return new Map();
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return new Map();
+        const map = new Map();
+        for (const [key, turns] of parsed) {
+            if (typeof key !== 'string' || !Array.isArray(turns)) continue;
+            map.set(key, turns
+                .filter(t => t && typeof t.q === 'string' && typeof t.a === 'string')
+                .slice(-ADVISOR_MAX_TURNS));
+        }
+        return map;
+    } catch {
+        return new Map();
+    }
+}
+
+function saveAdvisorMemory(map) {
+    try {
+        const trimmed = [...map.entries()].slice(-ADVISOR_MAX_CHATS);
+        localStorage.setItem(ADVISOR_MEMORY_KEY, JSON.stringify(trimmed));
+    } catch {
+        // storage unavailable — the thread stays in-page for this session
+    }
+}
+
+let advisorMemory = loadAdvisorMemory();
+
+function advisorChatKey(ctx) {
+    const g = ctx?.groupId ?? (ctx?.characterId === undefined ? (ctx?.chatId ?? '') : '');
+    if (g) return 'g:' + String(g);
+    return 'c:' + String(ctx?.characterId ?? '?');
+}
+
+function getAdvisorMemory(ctx) {
+    return advisorMemory.get(advisorChatKey(ctx)) || [];
+}
+
+function rememberAdvisorTurn(ctx, question, answer) {
+    const key = advisorChatKey(ctx);
+    const list = advisorMemory.get(key) || [];
+    list.push({
+        q: String(question || '').slice(0, 400),
+        a: String(answer || '').slice(0, 700),
+    });
+    advisorMemory.set(key, list.slice(-ADVISOR_MAX_TURNS));
+    saveAdvisorMemory(advisorMemory);
+}
+
+registerAgent({
+    id: 'story-advisor',
+    name: 'Story Advisor',
+    icon: '🎭',
+    tagline: 'Plan scenes, premises & actions with the current chat in mind',
+    category: 'writer',
+    phase: 'manual',
+    maxTokens: 2500,
+    needsInput: true,
+    conversational: true,
+    inputPlaceholder: 'Ask anything about this story — e.g. "Do you think {{char}} would like it if {{user}} got them a gift?"',
+
+    async buildPrompt(ctx, input, rt) {
+        const recentChat = getChatSnapshot(ctx, settings().maxContextMessages);
+        const prior = getAdvisorMemory(ctx);
+        const priorBlock = prior.length
+            ? '\nEarlier in this conversation you already answered (the user may be following up — stay consistent with these):\n' +
+              prior.map((m, i) => `Q${i + 1}: ${m.q}\nA${i + 1}: ${m.a}`).join('\n') + '\n'
+            : '';
+
+        const systemPrompt = `You are the Story Advisor, a seasoned writing partner for an interactive roleplay. The user is the author/player planning what happens next in their story with {{char}}. You see the recent scene of their open chat.
+
+Ground EVERY answer in what is actually established in the scene — the characters' personalities, their relationship, the current situation, mood, and open tension. If something is NOT established, say it is speculation; never invent canon and pass it off as fact.
+
+How to answer:
+1. Direct verdict first: a clear take (e.g. "Yes — she'd love it, but timing matters: …").
+2. Evidence: 2-4 concrete beats from the chat that support your take.
+3. Options: 2-3 plausible directions with what each would likely trigger in the character (emotions, reactions, complications).
+4. Recommendation: one suggested path — and if the user is planning their next message, suggest a concrete beat for it.
+
+For premise/pacing/planning questions, think in dramatic beats: what the scene needs, what the character wants vs what they fear, how tension escalates, and a satisfying payoff. Prefer MACRO emotional beats (mood shifts, decisions, stakes) over micro physical tells — never advise "her eyes flickered"-style details.
+
+Keep it tight: under 350 words, plain text, short paragraphs, simple "-" bullets. Address the user directly as the writer. Never speak as {{char}} — you advise about the story, you do not join it.`;
+
+        const prompt = `Character: {{char}}\nUser: {{user}}\nRecent scene:\n{{recentChat}}\n${priorBlock}${input
+            ? `Question: ${input}`
+            : 'No question given — give a short read of where this scene stands and the single most promising next beat.'}`;
+
+        return { systemPrompt, prompt: expandMacros(prompt, ctx, { input, recentChat }) };
+    },
+
+    parseOutput(raw) {
+        const text = stripMeta(raw)
+            .replace(/<plan>[\s\S]*?<\/plan>/gi, '')
+            .trim();
+        return text ? { text } : { text: String(raw || '').trim() };
+    },
+
+    renderResult(result) {
+        const text = String(result.text || '');
+        const paras = text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+        return `<div class="fa-advisor">${paras || '<p><em>(empty reply)</em></p>'}</div>`;
+    },
+
+    onResult(ctx, input, result) {
+        rememberAdvisorTurn(ctx, input, result.text);
+    },
+});
+
+// Music DJ — fork-agents agent that reads the current scene's mood and picks a
+// background track, Marinara-style. Registered from fork-agents' index.js.
+//
+// It talks to the fork-music extension over a small window-level bridge:
+//   window.__forkMusic.getState()          → { source, moods, library: [{title, mood}] }
+//   window.__forkMusic.play(query/us)      → plays, resolves true/false
+//   window.__forkMusic.stop()              → stops
+// The agent never imports the player directly so either extension can be
+// disabled without breaking the other.
+
+const MUSIC_DJ_ID = 'music-dj';
+
+function musicBridge() {
+    return (typeof window !== 'undefined' && window.__forkMusic) ? window.__forkMusic : null;
+}
+
+function musicState() {
+    const bridge = musicBridge();
+    if (!bridge || typeof bridge.getState !== 'function') {
+        return { source: 'unknown', moods: [], library: [], current: null, available: false };
+    }
+    try {
+        const state = bridge.getState() || {};
+        return Object.assign({ source: 'local', moods: [], library: [], current: null, available: true }, state);
+    } catch (error) {
+        console.warn('[fork-agents] music state unavailable', error);
+        return { source: 'unknown', moods: [], library: [], current: null, available: false };
+    }
+}
+
+function extractMusicJson(raw) {
+    // fork-agents' robust extractor is defined above these registrations.
+    try {
+        const parsed = extractJson(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+    } catch { /* fall through to the shape check below */ }
+    return null;
+}
+
+registerAgent({
+    id: MUSIC_DJ_ID,
+    name: 'Music DJ',
+    icon: '🎵',
+    tagline: 'Reads the scene and plays matching background music',
+    category: 'misc',
+    phase: 'manual',
+    maxTokens: 700,
+    needsInput: true,
+    conversational: true,
+    inputPlaceholder: 'Optional vibe — e.g. "something tense and quiet", "a warm tavern song", "make it ominous"',
+    applyLabel: 'Play this track',
+
+    async buildPrompt(ctx, input, rt) {
+        const recentChat = getChatSnapshot(ctx, 12);
+        const state = musicState();
+        const library = Array.isArray(state.library) ? state.library : [];
+        const source = state.source || 'local';
+
+        const libraryBlock = library.length
+            ? library.slice(0, 80).map(track => `- "${track.title}"${track.mood ? ` (mood: ${track.mood})` : ''}`).join('\n')
+            : '(the local library is empty)';
+        const moodBlock = state.moods && state.moods.length ? state.moods.join(', ') : '(none tagged)';
+        const currentBlock = state.current
+            ? `${state.current.title}${state.current.mood ? ` (${state.current.mood})` : ''}`
+            : 'nothing';
+
+        const systemPrompt = `You are the Music DJ for an interactive roleplay. You read the most recent turns of the scene and choose ONE piece of background music that fits its current emotional register.
+
+Judge the MOOD, not the literal events: tension, warmth, dread, romance, comedy, melancholy, triumph, calm, urgency. Prefer a track that supports the scene without fighting it — quiet for introspection, driving for action, sparse for grief.
+
+You are choosing for the "${source}" source.
+${source === 'local'
+        ? 'Pick a title FROM THE LIBRARY LIST below, copied exactly. Do not invent titles.'
+        : 'You may invent a specific, searchable song title + artist that fits.'}
+
+Reply with ONLY this JSON object and nothing else:
+{"title": "<track title>", "mood": "<one or two words>", "reason": "<max 18 words on why it fits the scene>", "stop": false}
+
+Set "stop": true (and leave title empty) only when the scene has clearly ended or music would be intrusive — for example a silent, solemn moment or a scene break.`;
+
+        const prompt = `Recent scene:\n${recentChat}\n\nNow playing: ${currentBlock}\nAvailable moods: ${moodBlock}\nLibrary:\n${libraryBlock}\n\n${input ? `Requested vibe: ${input}` : 'Pick the best fit for the current moment.'}`;
+
+        return { systemPrompt, prompt: expandMacros(prompt, ctx, { input, recentChat }) };
+    },
+
+    parseOutput(raw) {
+        const fallbackText = String(raw || '').trim();
+        const data = extractMusicJson(raw);
+        if (!data) {
+            return { parseFailed: true, raw: fallbackText, stop: false, title: '', mood: '', reason: '' };
+        }
+        const title = String(data.title || data.track || data.song || '').trim();
+        return {
+            title,
+            mood: String(data.mood || '').trim(),
+            reason: String(data.reason || data.why || '').trim(),
+            stop: data.stop === true || /^true$/i.test(String(data.stop || '')),
+            raw: fallbackText,
+            parseFailed: false,
+        };
+    },
+
+    renderResult(result) {
+        if (result.parseFailed) {
+            return `<div class="fa-music-dj">
+                <p><em>Could not parse the DJ's pick — raw output below.</em></p>
+                <pre class="fa-pre">${escapeHtml(result.raw || '')}</pre>
+            </div>`;
+        }
+        if (result.stop) {
+            return `<div class="fa-music-dj">
+                <div class="fa-music-title">⏹ No music for this moment</div>
+                <div class="fa-music-reason">${escapeHtml(result.reason || 'The DJ judged music would not fit the scene.')}</div>
+            </div>`;
+        }
+        return `<div class="fa-music-dj">
+            <div class="fa-music-title">♪ ${escapeHtml(result.title || '(no title)')}</div>
+            ${result.mood ? `<div class="fa-music-mood">mood: ${escapeHtml(result.mood)}</div>` : ''}
+            <div class="fa-music-reason">${escapeHtml(result.reason || '')}</div>
+        </div>`;
+    },
+
+    async apply(result, ctx) {
+        // The player boots asynchronously — wait briefly for its ready signal
+        // so an early DJ run doesn't report "extension disabled".
+        if (window.__forkMusicReady) {
+            await Promise.race([
+                window.__forkMusicReady,
+                new Promise((resolve) => setTimeout(resolve, 4000)),
+            ]);
+        }
+        const bridge = musicBridge();
+        if (!bridge) {
+            if (typeof toastr !== 'undefined') toastr.warning('Enable the Fork Music extension to play tracks.');
+            return false;
+        }
+        if (result.stop) {
+            await bridge.stop();
+            return true;
+        }
+        if (!result.title) {
+            if (typeof toastr !== 'undefined') toastr.warning('The DJ did not name a track.');
+            return false;
+        }
+        const ok = await bridge.play(result.title, result.mood);
+        if (!ok && typeof toastr !== 'undefined') {
+            toastr.warning(`No match for "${result.title}" in the library.`);
+        }
+        return !!ok;
     },
 });
 
@@ -929,7 +1705,7 @@ function registerSlashCommands() {
         namedArgumentList: [
             SlashCommandNamedArgument.fromProps({
                 name: 'name',
-                description: 'Agent id or name: lorebook-keeper, character-smith',
+                description: 'Agent id or name: lorebook-keeper, character-smith, story-advisor',
                 typeList: [ARGUMENT_TYPE.STRING],
                 isRequired: false,
                 acceptsMultiple: false,
@@ -942,7 +1718,7 @@ function registerSlashCommands() {
                 acceptsMultiple: false,
             }),
         ],
-        helpString: 'Run a fork helper agent. Examples: /agent name=lorebook-keeper prompt=the tavern | /agent character-smith "a pirate captain with a debt"',
+        helpString: 'Run a fork helper agent. Examples: /agent name=lorebook-keeper prompt=the tavern | /agent character-smith "a pirate captain with a debt" | /agent story-advisor "Would {{char}} like a gift from {{user}}?"',
     }));
 }
 
@@ -994,8 +1770,12 @@ function addSettings() {
                 <label for="fa-context-input">Recent messages agents read</label>
                 <input id="fa-context-input" type="number" min="5" max="200" step="1" data-setting="maxContextMessages">
             </div>
+            <div class="fa-settings-row">
+                <label for="fa-smith-tokens">Character Smith output budget (tokens)</label>
+                <input id="fa-smith-tokens" type="number" min="1500" max="16000" step="500" data-setting="smithMaxTokens">
+            </div>
             <button id="fa-open-launcher" class="menu_button">🧠 Open Helper Agents</button>
-            <small>Fork Agents — v0.1.4 (Phase 2: helper agent framework)</small>
+            <small>Fork Agents — v0.1.18 (Character Smith: Character &amp; World Builder prompts)</small>
         </div>`;
 
     $('#extensions_settings').append(html);
@@ -1008,11 +1788,12 @@ function addSettings() {
     });
 
     // Instant-apply for the text/number inputs (runtime reads settings live).
-    $('#fa-lorebook-input, #fa-context-input').on('change', function () {
+    $('#fa-lorebook-input, #fa-context-input, #fa-smith-tokens').on('change', function () {
         const key = $(this).attr('data-setting');
-        const value = key === 'maxContextMessages'
-            ? Math.max(5, Math.min(200, Number($(this).val()) || 30))
-            : $(this).val();
+        const num = Number($(this).val());
+        const value = key === 'maxContextMessages' ? Math.max(5, Math.min(200, num || 30))
+            : key === 'smithMaxTokens' ? Math.min(16000, Math.max(1500, num || 7000))
+                : $(this).val();
         extension_settings[extensionName][key] = value;
         saveSettingsDebounced();
         toastr.success('Agent settings saved.');
@@ -1026,15 +1807,18 @@ function addSettings() {
     $('#fa-enabled-toggle').prop('checked', !!extension_settings[extensionName].enabled);
     $('#fa-lorebook-input').val(extension_settings[extensionName].lorebookTarget || '');
     $('#fa-context-input').val(extension_settings[extensionName].maxContextMessages || 30);
+    $('#fa-smith-tokens').val(extension_settings[extensionName].smithMaxTokens || 7000);
 }
 
 // --- Init -----------------------------------------------------------------------
 
 jQuery(async () => {
-    if (!Object.hasOwn(extension_settings, extensionName)) {
-        extension_settings[extensionName] = { ...defaultSettings };
-        saveSettingsDebounced();
-    }
+    // Per-key default merge, ALWAYS — not just for brand-new installs. An
+    // existing install has the settings object saved WITHOUT any key added
+    // later, so a whole-object guard leaves it undefined and the feature
+    // silently no-ops (the v0.2.25 fork-mobile lesson).
+    extension_settings[extensionName] = { ...defaultSettings, ...extension_settings[extensionName] };
+    saveSettingsDebounced();
 
     await ensureCss();
     buildLauncher();
@@ -1042,7 +1826,7 @@ jQuery(async () => {
     addSettings();
     registerSlashCommands();
 
-    console.log('[fork-agents] active (v0.1.4)');
+    console.log('[fork-agents] active (v0.1.18)');
 });
 
 export function init() {
@@ -1052,6 +1836,6 @@ export function init() {
         buildPanel();
         addSettings();
         registerSlashCommands();
-        console.log('[fork-agents] re-init (v0.1.4)');
+        console.log('[fork-agents] re-init (v0.1.18)');
     });
 }

@@ -363,3 +363,78 @@
     font-family: monospace !important;
     line-height: 1.45 !important;
 }
+
+/* Music DJ result card */
+.fa-music-dj {
+    padding: 10px 12px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.fa-music-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.fa-music-mood {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 6px;
+}
+
+.fa-music-reason {
+    font-size: 13px;
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
+/* Character Smith result panel — scorecard, collapsible field previews, interview list */
+.fa-count {
+    font-size: 11px;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.fa-qlist {
+    margin: 6px 0 6px 18px;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.fa-qlist li {
+    margin-bottom: 6px;
+}
+
+.fa-card-block {
+    margin-top: 6px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.18);
+    padding: 6px 10px;
+}
+
+.fa-card-block > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.fa-card-block[open] > summary {
+    margin-bottom: 6px;
+}
+
+.fa-card-block .fa-entry-content {
+    font-size: 13px;
+    line-height: 1.5;
+    max-height: 46vh;
+    overflow-y: auto;
+}
