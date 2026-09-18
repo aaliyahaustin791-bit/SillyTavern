@@ -1123,6 +1123,56 @@ function formatSmithTurns(turns) {
     return turns.map((t, i) => `Q${i + 1}: ${t.q}\nA${i + 1}: ${t.a}`).join('\n');
 }
 
+/** Where the last buildPrompt expected the model to be — parseOutput uses it to
+ *  catch a model that jumps straight to a card. */
+let smithExpected = null;
+
+/** Verbs/phrases that mean "change the card you just built" rather than "here
+ *  is a new character". Bias matters: mistaking an idea for a revision is the
+ *  bug that made the walkthrough unreachable, so only clear change-intent
+ *  counts as a revision. */
+const SMITH_REVISION_RE = /\b(?:change|revise|edited?|rework|rewrite|expand|deepen|flesh out|shorten|trim|tweak|adjust|swap|replace|rename|add|remove|drop|delete|instead|another (?:version|greeting|scene|pass|opening)|try again|regenerate|do it again|make (?:her|him|them|it|this|the)\b|should (?:be|have|not)\b|needs? (?:a|an|to|more|less)\b|less (?:vague|short|detail)|more (?:detail|dialogue|depth|backstory)|colder|warmer|darker|softer|meaner|nicer|funnier|harsher|kinder|older|younger|taller|shorter|do not|don't)\b/i;
+
+function smithLooksLikeRevision(text) {
+    return SMITH_REVISION_RE.test(String(text || ''));
+}
+
+/** Does this message read like a NEW brief rather than a change to the last card?
+ *  Order matters: talking about the existing character, or clear change-intent,
+ *  counts as a revision no matter how long the message is. */
+function smithLooksLikeNewIdea(body, explicit = false, card = null, raw = '') {
+    const s = String(body || '').trim();
+    if (!s) return true;                              // empty box = "build from the recent scene"
+    if (smithRefersToCard(card, raw || s)) return false;   // asking ABOUT the built character
+    if (smithLooksLikeRevision(s)) return false;      // change-intent always wins
+    if (explicit) return true;                        // "world: …" / "character: …" is a new brief
+    if (/^(?:a|an|the|my|our|his|her|their)\s+\S+/i.test(s) && smithWordCount(s) >= 4) return true;
+    return smithWordCount(s) >= 8;                    // a long message with no change-intent is a brief
+}
+
+function smithRefersToCard(card, text) {
+    const name = String(card?.ch_name || '').trim().toLowerCase();
+    if (!name) return false;
+    const first = name.split(/[\s'’]+/)[0];
+    if (first.length < 3) return false;
+    return String(text || '').toLowerCase().includes(first);
+}
+
+/** Shared shape for steps 1-5 results (inventory / ready). */
+function smithInventoryResult(json, extra = {}) {
+    const questions = Array.isArray(json?.questions) ? json.questions.map(q => String(q).trim()).filter(Boolean) : [];
+    const inventory = String(json?.inventory ?? json?.text ?? '').trim();
+    return {
+        stage: String(json?.stage || '').toLowerCase() === 'ready' ? 'ready' : 'inventory',
+        inventory,
+        questions,
+        source: String(json?.source || '').trim(),
+        applyLabel: typeof json?.applyLabel === 'string' && json.applyLabel.trim() ? json.applyLabel.trim() : undefined,
+        text: [inventory, ...questions.map((q, i) => `${i + 1}. ${q}`)].filter(Boolean).join('\n\n'),
+        ...extra,
+    };
+}
+
 /** Force a model's lorebook entries into the exact embedded shape ST expects.
  *  Guards the "card imports but every entry is silently dropped" failure. */
 function normalizeSmithBook(book) {
@@ -1201,25 +1251,43 @@ registerAgent({
         // Escape hatches out of the walkthrough ("skip", "direct: …", "just build it").
         const directPrefix = raw.replace(/^(?:direct|quick|skip|no questions|just build(?: it)?|straight to)\s*[:\-]?\s*/i, '');
         const forceDirect = directPrefix !== raw;
-        const cleaned = forceDirect ? directPrefix : raw;
-        const { mode: detected, idea, explicit } = parseSmithMode(cleaned);
+        // "new: …" / "another: …" explicitly starts a fresh build.
+        const newPrefix = raw.replace(/^(?:new|another|fresh)\b\s*[:\-]?\s*/i, '');
+        const wantsNew = newPrefix !== raw;
+        const body = forceDirect ? directPrefix : (wantsNew ? newPrefix : raw);
+        const { mode: detected, idea, explicit } = parseSmithMode(body);
         let entry = getSmithEntry(ctx);
 
-        // "start over" / "new character" wipes the thread and restarts at Step 1.
-        if (/^(?:start over|start again|new character|new card|reset|restart|forget (?:this|it))\b/i.test(raw)) {
+        // "start over" / "new idea" wipes the thread and restarts at Step 1.
+        if (wantsNew || /^(?:start over|start again|new character|new card|reset|restart|forget (?:this|it))\b/i.test(raw)) {
             clearSmithThread(ctx);
             entry = getSmithEntry(ctx);
         }
 
         // The questions the agent asked last turn become this turn's answers.
-        const priorCard = entry.card;
         if (entry.pendingQuestions && raw && !forceDirect) {
             rememberSmithTurn(ctx, entry.pendingQuestions, raw);
             entry = getSmithEntry(ctx);
         }
-        const hasThread = entry.turns.length > 0;
+
         const confirmed = /^(?:yes|y|yep|yeah|yup|sure|ok|okay|go|go ahead|generate|build|build it|do it|looks good|good|ready|proceed|confirm|confirmed)\b/i.test(raw);
 
+        // ⚠ A stored card must not swallow every later message. Previously ANY
+        // non-affirmative turn with a card in the thread became a "revise this"
+        // prompt, so a second idea could never reach the inventory and the
+        // walkthrough looked broken. Only clear change-intent (or naming the
+        // existing character) is a revision; anything else starts a fresh build.
+        let priorCard = entry.card;
+        const revisionTurn = !!priorCard && !forceDirect && !confirmed
+            && !smithLooksLikeNewIdea(body, explicit, priorCard, raw);
+        if (priorCard && !forceDirect && !confirmed && !revisionTurn) {
+            clearSmithThread(ctx);
+            entry = getSmithEntry(ctx);
+            priorCard = null;
+            if (raw) toastr.info('New idea — starting a fresh walkthrough (the previous draft was set aside).');
+        }
+
+        const hasThread = entry.turns.length > 0;
         const mode = explicit ? detected : (priorCard?.character_book ? 'world' : detected);
 
         let systemPrompt = SMITH_RULES + '\n\n' + SMITH_WORKFLOW + '\n\n';
@@ -1231,7 +1299,7 @@ registerAgent({
         const lines = [];
         if (forceDirect) {
             lines.push(`DIRECT BUILD. The user asked to skip the walkthrough. Idea: ${idea || '(use the recent scene)'}`);
-        } else if (priorCard && !confirmed) {
+        } else if (revisionTurn) {
             lines.push('REVISION REQUEST (stage "card"). Here is the card you built earlier in this conversation, compacted:',
                 JSON.stringify(priorCard),
                 'Change ONLY what this turn asks for — keep every other established fact, name and voice exactly. Output the COMPLETE card again, every field in full. Never a diff or a partial card.');
@@ -1259,7 +1327,14 @@ registerAgent({
         }
         lines.push('Output ONLY ONE JSON object with a "stage" key. No markdown, no code fences, no commentary.');
 
-        return { systemPrompt, prompt: expandMacros(lines.join('\n\n'), ctx, { input: raw, recentChat }) };
+        const prompt = expandMacros(lines.join('\n\n'), ctx, { input: raw, recentChat });
+        // parseOutput reads this to catch a model that skips straight to a card.
+        smithExpected = {
+            stage: (forceDirect || revisionTurn || (priorCard && confirmed)) ? 'card' : 'inventory',
+            systemPrompt,
+            prompt,
+        };
+        return { systemPrompt, prompt };
     },
 
     async parseOutput(raw, rt) {
@@ -1278,15 +1353,28 @@ registerAgent({
             if (!inventory && !questions.length) {
                 return { stage: 'inventory', inventory: String(raw || '').trim(), questions: [], source: '', unparsed: true, text: raw };
             }
-            return {
-                stage: stage === 'ready' ? 'ready' : 'inventory',
-                inventory,
-                questions,
-                source: String(json?.source || '').trim(),
-                applyLabel: typeof json?.applyLabel === 'string' && json.applyLabel.trim() ? json.applyLabel.trim() : undefined,
-                text: [inventory, ...questions.map((q, i) => `${i + 1}. ${q}`)].filter(Boolean).join('\n\n'),
-            };
+            return smithInventoryResult(json);
         }
+
+        // The method says steps 1-5 run first. If the model jumped straight to a
+        // card while an inventory was expected, pull it back with ONE corrective
+        // call; if it still insists, keep the card and say so in the panel.
+        if (smithExpected?.stage === 'inventory' && typeof rt?.callModel === 'function') {
+            try {
+                const retryRaw = await rt.callModel({
+                    systemPrompt: smithExpected.systemPrompt,
+                    prompt: `${smithExpected.prompt}\n\n⚠ You skipped the method: you returned a card before the inventory was verified. Do it properly now — output ONE JSON object with "stage":"inventory" (or "ready" if nothing material is open) and the open decisions as "questions". No card on this turn.`,
+                    maxTokens: 3000,
+                });
+                const retry = extractJson(retryRaw);
+                if (retry && !retry.card && !retry.ch_name && (retry.inventory || retry.questions?.length)) {
+                    return smithInventoryResult(retry, { corrected: true });
+                }
+            } catch (err) {
+                console.warn('[fork-agents] character smith walkthrough correction failed', err);
+            }
+        }
+
         const card = json.card || json;
         if (typeof card !== 'object' || Array.isArray(card)) {
             throw new Error('Model did not return a character card object.');
@@ -1343,7 +1431,7 @@ registerAgent({
             card.character_book = normalizeSmithBook(card.character_book);
             if (!card.character_book.entries.length) delete card.character_book;
         }
-        return { stage: 'card', card, thin: smithThinFields(card), toppedUp };
+        return { stage: 'card', card, thin: smithThinFields(card), toppedUp, methodSkipped: smithExpected?.stage === 'inventory' };
     },
 
     onResult(ctx, input, result) {
@@ -1374,6 +1462,7 @@ registerAgent({
                 <div class="fa-card-name">${ready ? '📋 Inventory — ready to generate' : '📋 Inventory — steps 1-3 of the builder method'}</div>
                 ${result?.source ? `<div class="fa-card-row"><b>Source:</b> ${escapeHtml(result.source)}</div>` : ''}
                 ${result?.unparsed ? `<div class="fa-card-row" ${warn}><b>⚠ Couldn't parse structured output</b> — showing the raw text; reply with your corrections and the walkthrough continues.</div>` : ''}
+                ${result?.corrected ? `<div class="fa-card-row" ${warn}><b>⚠ The model tried to skip the walkthrough</b> and went straight to a card — it was pulled back to the inventory. Reply <b>direct:</b> any time to build immediately instead.</div>` : ''}
                 <details class="fa-card-block" open><summary>Inventory — tap to collapse</summary><div class="fa-entry-content">${escapeHtml(inventory).replace(/\n/g, '<br>')}</div></details>
                 ${questions.length ? `<div class="fa-card-row"><b>${questions.length} open decision${questions.length === 1 ? '' : 's'} — answer in the <b>Ask</b> box below</b> (one per line is fine, partial answers are fine, keep going until they're all settled):</div>
                 <ol class="fa-qlist">${questions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ol>` : ''}
@@ -1411,6 +1500,8 @@ registerAgent({
                 <div class="fa-card-row"><b>Tags:</b> ${(c.tags || []).map(t => chip(t)).join('') || '—'}</div>
                 ${result.toppedUp?.length ? `<div class="fa-card-row"><b>Top-up pass:</b> rewrote ${escapeHtml(result.toppedUp.join(', '))}</div>` : ''}
                 ${thinLeft}
+                ${result?.methodSkipped ? `<div class="fa-card-row" ${warn}><b>⚠ Built without the walkthrough</b> — the model ignored the inventory step (twice). Save it as-is, or reply <b>start over</b> to run the method properly.</div>` : ''}
+                <div class="fa-card-row"><b>Next:</b> reply with a change to revise this card · <b>new: &lt;idea&gt;</b> for a fresh walkthrough · <b>Save character</b> to keep it.</div>
                 ${book.length ? `<div class="fa-card-row"><b>Lorebook layers:</b> ${book.filter(e => e.constant).length} always-on · ${book.filter(e => !e.constant).length} keyword-triggered</div>` : ''}
                 ${block('Full description', c.description)}
                 ${block('First message', c.first_mes)}
@@ -1873,7 +1964,7 @@ function addSettings() {
                 <input id="fa-smith-tokens" type="number" min="1500" max="16000" step="500" data-setting="smithMaxTokens">
             </div>
             <button id="fa-open-launcher" class="menu_button">🧠 Open Helper Agents</button>
-            <small>Fork Agents — v0.1.19 (Character Smith: full builder-method walkthrough)</small>
+            <small>Fork Agents — v0.1.20 (Character Smith: guarded builder-method walkthrough)</small>
         </div>`;
 
     $('#extensions_settings').append(html);
@@ -1924,7 +2015,7 @@ jQuery(async () => {
     addSettings();
     registerSlashCommands();
 
-    console.log('[fork-agents] active (v0.1.19)');
+    console.log('[fork-agents] active (v0.1.20)');
 });
 
 export function init() {
@@ -1934,6 +2025,6 @@ export function init() {
         buildPanel();
         addSettings();
         registerSlashCommands();
-        console.log('[fork-agents] re-init (v0.1.19)');
+        console.log('[fork-agents] re-init (v0.1.20)');
     });
 }
