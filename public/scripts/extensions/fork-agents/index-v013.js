@@ -469,7 +469,14 @@ const panel = {
             </div>`);
         }
         const actions = [];
-        if (agent.apply) actions.push({ id: 'apply', label: agent.applyLabel || 'Apply', primary: true });
+        if (agent.apply) {
+            // applyLabel may be a function of the result — Character Smith
+            // relabels the button per stage (save / build / how-to-continue).
+            const label = typeof agent.applyLabel === 'function'
+                ? agent.applyLabel(result)
+                : (result?.applyLabel || agent.applyLabel);
+            actions.push({ id: 'apply', label: label || 'Apply', primary: true });
+        }
         actions.push({ id: 'copy', label: 'Copy' });
         actions.push({ id: 'send', label: 'Send to chat' });
         actions.push({ id: 'done', label: 'Done' });
@@ -852,6 +859,8 @@ function loadSmithMemory() {
                 card: entry.card && typeof entry.card === 'object' ? entry.card : null,
                 turns,
                 pendingQuestions: typeof entry.pendingQuestions === 'string' ? entry.pendingQuestions : '',
+                inventory: typeof entry.inventory === 'string' ? entry.inventory.slice(0, 4000) : '',
+                stage: typeof entry.stage === 'string' ? entry.stage : '',
             });
         }
         return map;
@@ -878,7 +887,15 @@ function smithChatKey(ctx) {
 }
 
 function getSmithEntry(ctx) {
-    return smithMemory.get(smithChatKey(ctx)) || { card: null, turns: [], pendingQuestions: '' };
+    return smithMemory.get(smithChatKey(ctx)) || { card: null, turns: [], pendingQuestions: '', inventory: '', stage: '' };
+}
+
+/** Record what the agent presented and where it says it is in the method. */
+function setSmithStage(ctx, stage, inventory) {
+    const entry = getSmithEntry(ctx);
+    entry.stage = String(stage || '');
+    if (typeof inventory === 'string' && inventory.trim()) entry.inventory = inventory.slice(0, 4000);
+    setSmithEntry(ctx, entry);
 }
 
 function setSmithEntry(ctx, entry) {
@@ -1020,19 +1037,41 @@ Write 8-20 entries across four layers:
   keys → 2-5 natural variants, always including possessives and titles: ["Kael","Kael's","Captain Kael"]. Never a bare generic word like "city" or "warrior".
 Also keep recursive_scanning:true and scan_depth:4. Use token_budget 2048 for 8-20 entries, 4096 above that.`;
 
-/** Interview mode: the idea is too thin for a great card yet. */
-const SMITH_INTERVIEW_MODE = `[MODE: GUIDED INTERVIEW — the idea is too thin to build a great card yet]
-Output ONLY this JSON:
-{"questions":["...","..."]}
-Ask 5-8 questions that would actually change the card. Never ask for anything the user already told you. One line each, concrete, and add a short bracketed example answer when the question is abstract. Mix these categories:
-  - identity and role: who they are, what they do all day, what they are known for.
-  - want vs need: what they think they want, and what they actually need.
-  - the wound: the thing they regret, the loss that shaped them, the line they will not cross — or did.
-  - voice: a phrase they overuse, how they address strangers, what they never say.
-  - pressure and intimacy: who they become when cornered, and how they show affection.
-  - their relationship to {{user}}: how they met, what they want from {{user}}, what they hide from {{user}}.
-  - one or two world anchors if the setting matters: era, place, what is dangerous there.
-Do not ask about token counts, card mechanics, or anything the AI can decide itself (names of minor relatives, a street name, an outfit).`;
+/** THE METHOD — the builder's pre-generation workflow, walked one turn at a
+ *  time. The agent declares its stage in JSON so the extension can render and
+ *  gate the right action for each step. */
+const SMITH_WORKFLOW = `[THE METHOD — work through the builder's steps ACROSS TURNS. You output exactly ONE JSON object per turn, and it MUST declare where you are with "stage".]
+This is a conversation, not a one-shot generator. An idea is not a card.
+
+  STEP 1-3 — stage "inventory" (first turn, and for as long as gaps remain)
+    Identify the source, compile what is known, and present a structured inventory that makes the GAPS visible as questions. NEVER write the card on this turn.
+    Format:
+    {"stage":"inventory","source":"existing property: <name> (<era/version>) — or — original creation","inventory":"📋 INVENTORY — <name>\n\n▶ SOURCE ...\n\n✓ IDENTITY ...\n✓ APPEARANCE ...\n✓ VOICE ...\n⚠ GAPS — needs your call","questions":["Sharp, specific question?","Next question?"]}
+    - EXISTING PROPERTY: draw the inventory from your canon knowledge. Mark anything you are unsure of "⚠ UNVERIFIED" instead of guessing, and ask which version/era is wanted.
+    - ORIGINAL CREATION: the user is the ONLY source of truth. List what they actually gave you under ✓, and put everything else under ⚠ GAPS as a question. NEVER invent facts, and never present your own inventions as settled — a name you made up is a gap, not a fact.
+    - The inventory is for ONE character in character mode; in world mode cover the cast, factions, locations, items, timeline and rules as separate ✓ groups.
+    - The user may answer over several messages: each time, re-present the UPDATED inventory with the gaps that are still open, and ask again. Do not fill in the leftovers yourself.
+
+  STEP 4-5 — stage "ready" (the answers have closed every gap that matters)
+    Present the FINAL, gap-free inventory, state that nothing is left unverified, and ask: "Ready to generate?" Set the label so the user can just tap it.
+    Format: {"stage":"ready","inventory":"📋 INVENTORY — <name> ...✓ everything settled","questions":[],"applyLabel":"✅ Build the card"}
+    You STILL may not write the card on this turn.
+
+  STEP 6 — stage "card" (only after the user confirms: yes / go / build / generate / "looks good")
+    Output the complete card exactly as the mode section above specifies.
+    Format: {"stage":"card","card":{ ... }}
+
+HARD RULES
+- Never skip from the first idea to a card unless the user explicitly said "skip", "direct", "just build it", "no questions" or "quick" — those mean: go straight to stage "card", filling gaps with reasonable, consistent inference and noting nothing further.
+- Never write the card while the user has not confirmed the inventory. A short, generic card produced early is a failure, not efficiency.
+- Never ask the user for something you can decide yourself (a minor relative's name, a street name, an outfit detail) — those are gaps you resolve with inference and then show in the inventory.
+- Do ask about anything that would change the card: who they are, what they want vs need, the wound, their voice, how {{user}} fits, the era/version for canon, and (world mode) the era, power structure, central conflict and tone.
+- If the user contradicts or corrects the inventory, update it and mark the correction as user-specified.
+- If the user asks for a change to a card you already built in this conversation, that is stage "card" again with the COMPLETE revised card — never a diff.
+- Keep "inventory" readable prose-with-labels, not JSON-in-a-string noise: short labelled lines, ✓ for settled, ⚠ for open.`;
+
+const SMITH_DIRECT = `[DIRECT MODE — the user asked to skip the walkthrough]
+This turn, do NOT present an inventory and do NOT ask questions. Output {"stage":"card","card":{ ... }} immediately, using the mode spec above in full. Fill every unspecified detail with specific, internally consistent inference and state in creator_notes what you had to infer.`;
 
 const SMITH_FULL_DETAIL = 'FULL DETAIL REQUESTED: the lengths above become floors with no ceiling. Description may run 3-5 paragraphs, mes_example 5-8 exchanges, greetings 3 long scenes, creator_notes comprehensive. Write until the material is genuinely exhausted.';
 
@@ -1137,7 +1176,7 @@ registerAgent({
     id: 'character-smith',
     name: 'Character Smith',
     icon: '🛠️',
-    tagline: 'Build a full V2 card with the Character & World Builder method',
+    tagline: 'Walks the builder method: inventory → your call → rich card',
     category: 'writer',
     phase: 'manual',
     // Output budget is a setting: a builder-grade card needs 3-6k tokens, and
@@ -1147,67 +1186,109 @@ registerAgent({
     },
     needsInput: true,
     conversational: true,
-    inputPlaceholder: 'Describe the character — e.g. "a sarcastic tavern keeper who secretly runs the city guild". Prefix "world:" for a world card, or type "guided" to be interviewed first.',
-    followupPlaceholder: 'Refine it — e.g. "expand her backstory", "make him colder", "add two alternate greetings"…',
-    applyLabel: 'Save character',
+    inputPlaceholder: 'Give the idea — e.g. "a sarcastic tavern keeper who secretly runs the city guild". Character Smith then walks the builder method with you. Prefix "world:" for a world card, "direct:" to skip the walkthrough.',
+    followupPlaceholder: 'Answer the open decisions — or say "yes" to build · after the card: "expand her backstory", "make him colder"…',
+    // The action button changes meaning per stage: save the card, continue the
+    // walkthrough, or explain what to do next.
+    applyLabel: (result) => {
+        if (result?.card) return 'Save character';
+        if (result?.stage === 'ready') return String(result?.applyLabel || '✅ Build the card');
+        return 'Answer below ↓';
+    },
 
     buildPrompt(ctx, input, rt) {
         const raw = String(input || '').trim();
-        const forceDirect = raw.replace(/^skip\b[\s:,-]*/i, '');
-        const skipped = forceDirect !== raw;
-        const { mode: detected, idea, explicit } = parseSmithMode(skipped ? forceDirect : raw);
+        // Escape hatches out of the walkthrough ("skip", "direct: …", "just build it").
+        const directPrefix = raw.replace(/^(?:direct|quick|skip|no questions|just build(?: it)?|straight to)\s*[:\-]?\s*/i, '');
+        const forceDirect = directPrefix !== raw;
+        const cleaned = forceDirect ? directPrefix : raw;
+        const { mode: detected, idea, explicit } = parseSmithMode(cleaned);
         let entry = getSmithEntry(ctx);
-        const priorCard = entry.card;
 
-        // The previous interview's questions became this turn's answers.
-        if (entry.pendingQuestions && raw) {
+        // "start over" / "new character" wipes the thread and restarts at Step 1.
+        if (/^(?:start over|start again|new character|new card|reset|restart|forget (?:this|it))\b/i.test(raw)) {
+            clearSmithThread(ctx);
+            entry = getSmithEntry(ctx);
+        }
+
+        // The questions the agent asked last turn become this turn's answers.
+        const priorCard = entry.card;
+        if (entry.pendingQuestions && raw && !forceDirect) {
             rememberSmithTurn(ctx, entry.pendingQuestions, raw);
             entry = getSmithEntry(ctx);
         }
-        const hasAnswers = entry.turns.length > 0 && !priorCard;
+        const hasThread = entry.turns.length > 0;
+        const confirmed = /^(?:yes|y|yep|yeah|yup|sure|ok|okay|go|go ahead|generate|build|build it|do it|looks good|good|ready|proceed|confirm|confirmed)\b/i.test(raw);
 
-        const guidedWanted = !skipped && (/^(guided|grill me|interview|ask me|questions?)\b/i.test(raw)
-            || (!explicit && !priorCard && !hasAnswers && smithWordCount(idea) < 5));
         const mode = explicit ? detected : (priorCard?.character_book ? 'world' : detected);
 
-        let systemPrompt = SMITH_RULES + '\n\n';
-        if (guidedWanted) systemPrompt += SMITH_INTERVIEW_MODE;
-        else if (mode === 'world') systemPrompt += SMITH_WORLD_MODE;
-        else systemPrompt += SMITH_CHARACTER_MODE;
+        let systemPrompt = SMITH_RULES + '\n\n' + SMITH_WORKFLOW + '\n\n';
+        systemPrompt += mode === 'world' ? SMITH_WORLD_MODE : SMITH_CHARACTER_MODE;
+        if (forceDirect) systemPrompt += '\n\n' + SMITH_DIRECT;
 
+        // Say out loud which step of the method this turn is — deterministic
+        // hints beat hoping the model remembers where it is.
         const lines = [];
-        if (guidedWanted) {
-            lines.push(`INTERVIEW. The idea so far: ${idea || '(nothing yet — ask about whatever the recent scene suggests)'}`);
-        } else if (priorCard) {
-            lines.push('REVISION REQUEST. Here is the card you built earlier in this conversation, compacted:',
+        if (forceDirect) {
+            lines.push(`DIRECT BUILD. The user asked to skip the walkthrough. Idea: ${idea || '(use the recent scene)'}`);
+        } else if (priorCard && !confirmed) {
+            lines.push('REVISION REQUEST (stage "card"). Here is the card you built earlier in this conversation, compacted:',
                 JSON.stringify(priorCard),
-                'Change ONLY what this turn asks for — keep every other established fact, name and voice exactly. Output the COMPLETE card again, every field in full. Never output a diff, a patch or a partial card.');
+                'Change ONLY what this turn asks for — keep every other established fact, name and voice exactly. Output the COMPLETE card again, every field in full. Never a diff or a partial card.');
             if (raw) lines.push(`This turn's instruction: ${raw}`);
-        } else if (hasAnswers) {
-            lines.push('Build the card now, using the interview answers below as the source of truth.');
+        } else if (priorCard && confirmed) {
+            lines.push('The user confirmed. Output stage "card" now — the complete card, revised from the earlier build rather than restarted:',
+                JSON.stringify(priorCard));
+        } else if (!hasThread) {
+            lines.push(`STEP 1-3 (first turn of this build). The user's idea: ${idea || '(no idea given — derive it from the recent scene)'}`,
+                'Present the inventory for this idea NOW, with every decision you cannot settle yourself listed as a question in "questions". Do NOT output a card on this turn.');
         } else {
-            lines.push(`Build the card from this idea: ${idea || '(no idea given — derive it from the recent scene)'}`);
+            lines.push(`STEP 3-5. Earlier in this conversation you presented this inventory:\n${entry.inventory || '(inventory text not retained — re-present it from the answers below)'}`,
+                'The user has just replied. Re-present the UPDATED inventory, keeping only the gaps that are genuinely still open.',
+                confirmed
+                    ? 'The user CONFIRMED: if no material gap remains, output stage "card" now. If a decision that would change the card is genuinely still missing, ask about it instead (stage "inventory") rather than guessing.'
+                    : 'Still gathering: output stage "inventory" with the remaining gaps as questions, or stage "ready" plus "Ready to generate?" if nothing important is left open. Do NOT output the card on this turn.');
         }
-        if (!guidedWanted && entry.turns.length) {
-            lines.push(`Interview answers earlier in this conversation (treat as facts — never contradict them):\n${formatSmithTurns(entry.turns)}`);
+        if (entry.turns.length && !forceDirect) {
+            lines.push(`Answers already given in this conversation (treat as facts — never contradict them, never ask again):\n${formatSmithTurns(entry.turns)}`);
         }
         if (/full detail|insane detail|max detail|maximum detail/i.test(raw)) lines.push(SMITH_FULL_DETAIL);
         const recentChat = getChatSnapshot(ctx, settings().maxContextMessages);
-        if (recentChat && !guidedWanted) {
+        if (recentChat) {
             lines.push(`Recent scene from the open chat — match its voice and tone, but do NOT import its events as facts about this card:\n${recentChat}`);
         }
-        lines.push('Output ONLY the JSON object described above. No markdown, no code fences, no commentary.');
+        lines.push('Output ONLY ONE JSON object with a "stage" key. No markdown, no code fences, no commentary.');
 
         return { systemPrompt, prompt: expandMacros(lines.join('\n\n'), ctx, { input: raw, recentChat }) };
     },
 
     async parseOutput(raw, rt) {
         const json = extractJson(raw);
-        if (Array.isArray(json?.questions) && json.questions.length) {
-            return { questions: json.questions.map(q => String(q).trim()).filter(Boolean), text: raw };
+        const stage = String(json?.stage || '').toLowerCase();
+        const hasCard = !!(json && typeof json === 'object' && (json.card || json.ch_name || json.data));
+        const questions = Array.isArray(json?.questions) ? json.questions.map(q => String(q).trim()).filter(Boolean) : [];
+
+        if (!hasCard) {
+            // Steps 1-5 (inventory / ready) — or prose we could not structure.
+            // Never throw here: the conversation must survive a sloppy turn,
+            // and the prose itself is exactly what the user needs to read.
+            const inventory = String(json?.inventory ?? json?.text ?? '').trim();
+            // NOTE: `!questions` is false for an EMPTY array (JS truthiness) —
+            // check .length, or the raw-prose fallback returns an empty panel.
+            if (!inventory && !questions.length) {
+                return { stage: 'inventory', inventory: String(raw || '').trim(), questions: [], source: '', unparsed: true, text: raw };
+            }
+            return {
+                stage: stage === 'ready' ? 'ready' : 'inventory',
+                inventory,
+                questions,
+                source: String(json?.source || '').trim(),
+                applyLabel: typeof json?.applyLabel === 'string' && json.applyLabel.trim() ? json.applyLabel.trim() : undefined,
+                text: [inventory, ...questions.map((q, i) => `${i + 1}. ${q}`)].filter(Boolean).join('\n\n'),
+            };
         }
-        const card = json?.card || json;
-        if (!card || typeof card !== 'object' || Array.isArray(card)) {
+        const card = json.card || json;
+        if (typeof card !== 'object' || Array.isArray(card)) {
             throw new Error('Model did not return a character card object.');
         }
         if (!card.ch_name && card.name) card.ch_name = card.name;
@@ -1262,31 +1343,43 @@ registerAgent({
             card.character_book = normalizeSmithBook(card.character_book);
             if (!card.character_book.entries.length) delete card.character_book;
         }
-        return { card, thin: smithThinFields(card), toppedUp };
+        return { stage: 'card', card, thin: smithThinFields(card), toppedUp };
     },
 
     onResult(ctx, input, result) {
-        if (result?.questions?.length) {
-            const entry = getSmithEntry(ctx);
-            entry.pendingQuestions = result.questions.join('\n');
-            setSmithEntry(ctx, entry);
-            return;
-        }
-        if (result?.card) {
+        if (!result) return;
+        if (result.stage === 'card' || result.card) {
+            setSmithStage(ctx, 'card', '');
             rememberSmithTurn(ctx, input, `card: ${result.card.ch_name} (${smithWordCount(result.card.description)} word description)`);
             rememberSmithCard(ctx, result.card);
+            return;
         }
+        // Steps 1-5: keep the inventory + the open questions so the next turn
+        // can pick the method back up where it left off.
+        setSmithStage(ctx, result.stage || 'inventory', result.inventory || '');
+        const entry = getSmithEntry(ctx);
+        entry.pendingQuestions = (result.questions || []).join('\n');
+        setSmithEntry(ctx, entry);
     },
 
     renderResult(result) {
         const warn = 'style="color:#e0a44a"';
-        if (result.questions?.length) {
+        if (!result?.card) {
+            // Inventory (steps 1-3) or final read-back (steps 4-5) — no card yet.
+            const ready = result?.stage === 'ready';
+            const questions = result?.questions || [];
+            const inventory = String(result?.inventory || '').trim();
             return `
             <div class="fa-card-preview">
-                <div class="fa-card-name">🛠️ Interview — ${result.questions.length} questions</div>
-                <div class="fa-card-row">Answer in the <b>Ask</b> box below — all at once is fine, one answer per line. Character Smith then builds the full card from your answers.</div>
-                <ol class="fa-qlist">${result.questions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ol>
-                <div class="fa-card-row"><i>Want a card straight away instead? Reply with the idea again, prefixed with "skip", e.g. "skip a knight who lost her order".</i></div>
+                <div class="fa-card-name">${ready ? '📋 Inventory — ready to generate' : '📋 Inventory — steps 1-3 of the builder method'}</div>
+                ${result?.source ? `<div class="fa-card-row"><b>Source:</b> ${escapeHtml(result.source)}</div>` : ''}
+                ${result?.unparsed ? `<div class="fa-card-row" ${warn}><b>⚠ Couldn't parse structured output</b> — showing the raw text; reply with your corrections and the walkthrough continues.</div>` : ''}
+                <details class="fa-card-block" open><summary>Inventory — tap to collapse</summary><div class="fa-entry-content">${escapeHtml(inventory).replace(/\n/g, '<br>')}</div></details>
+                ${questions.length ? `<div class="fa-card-row"><b>${questions.length} open decision${questions.length === 1 ? '' : 's'} — answer in the <b>Ask</b> box below</b> (one per line is fine, partial answers are fine, keep going until they're all settled):</div>
+                <ol class="fa-qlist">${questions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ol>` : ''}
+                <div class="fa-card-row">${ready
+                    ? 'Nothing material is left open. Reply <b>yes</b> (or tap the button) and the full card gets written — with every field above its floor.'
+                    : 'Character Smith will <b>not</b> write the card until you confirm the inventory — that is what stops it coming back short and vague. Impatient? Reply <b>skip</b> to build straight from what it has.'}</div>
             </div>`;
         }
         const c = result.card;
@@ -1331,7 +1424,13 @@ registerAgent({
     async apply(result, ctx) {
         const card = result?.card;
         if (!card) {
-            toastr.warning('Nothing to save yet — answer the interview in the Ask box first.');
+            // Steps 1-5: the action button means "continue the walkthrough".
+            if (result?.stage === 'ready') {
+                toastr.info('Building the card from the verified inventory…');
+                runAgent(agents.get('character-smith'), 'yes — build the card', { skipInput: true });
+                return true;
+            }
+            toastr.info('Not yet — answer the numbered decisions in the Ask box below (partial answers and "skip" both work).');
             return false;
         }
         const name = String(card.ch_name || '').trim();
@@ -1391,7 +1490,6 @@ registerAgent({
         }
     },
 });
-
 
 // Story Advisor — conversational planning partner grounded in the open chat.
 // Reads the recent scene, remembers this session's Q&A per chat, and answers
@@ -1775,7 +1873,7 @@ function addSettings() {
                 <input id="fa-smith-tokens" type="number" min="1500" max="16000" step="500" data-setting="smithMaxTokens">
             </div>
             <button id="fa-open-launcher" class="menu_button">🧠 Open Helper Agents</button>
-            <small>Fork Agents — v0.1.18 (Character Smith: Character &amp; World Builder prompts)</small>
+            <small>Fork Agents — v0.1.19 (Character Smith: full builder-method walkthrough)</small>
         </div>`;
 
     $('#extensions_settings').append(html);
@@ -1826,7 +1924,7 @@ jQuery(async () => {
     addSettings();
     registerSlashCommands();
 
-    console.log('[fork-agents] active (v0.1.18)');
+    console.log('[fork-agents] active (v0.1.19)');
 });
 
 export function init() {
@@ -1836,6 +1934,6 @@ export function init() {
         buildPanel();
         addSettings();
         registerSlashCommands();
-        console.log('[fork-agents] re-init (v0.1.18)');
+        console.log('[fork-agents] re-init (v0.1.19)');
     });
 }
