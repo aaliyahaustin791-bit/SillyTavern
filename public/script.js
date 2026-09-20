@@ -741,6 +741,12 @@ async function firstLoadInit() {
 
     initLoaderOverlay.prepend(initBoot);
 
+    // The static #preloader mounts the SAME block, and ST keeps it in the DOM until the
+    // first loader hides. Hide its copy in the same tick we show this popup, so exactly one
+    // boot screen is ever painted (an earlier version showed both, offset, for the whole
+    // init — the preloader's copy stays as the opaque cover behind this transparent popup).
+    document.querySelector('#preloader .mt-boot')?.classList.add('mt-boot-hidden');
+
     const initLoaderHandle = loader.show({
         slug: 'app-init',
         toastMode: loader.ToastMode.NONE,

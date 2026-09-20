@@ -179,6 +179,24 @@
     gap: 0;
 }
 
+/* ⚠️ HAND-OFF — never let both boot surfaces render the block at once.
+   showOverlay() builds the app-init splash as a `transparent: true` Popup, while ST keeps
+   #preloader mounted until the first loader hides (it IS the opaque cover behind that
+   transparent popup). With the same .mt-boot markup in both, the screen showed two boot
+   screens at once, offset by the popup's own centering — only visible in a screenshot,
+   because neither copy animates into view. firstLoadInit() adds .mt-boot-hidden to the
+   preloader's copy just before showing the popup: one block on screen, always, with the
+   preloader's dark background still doing the FOUC cover. */
+.mt-boot-hidden {
+    visibility: hidden !important;
+}
+
+/* The popup's gear spinner sits under our progress bar — redundant, and it drags the
+   block off-centre in the popup's flex column. */
+#loader.splash-screen #load-spinner {
+    display: none;
+}
+
 @keyframes mt-boot-slide {
     0% { transform: translateX(-115%); }
     100% { transform: translateX(255%); }
