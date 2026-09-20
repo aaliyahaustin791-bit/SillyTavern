@@ -12121,8 +12121,13 @@ jQuery(async function () {
         }
 
         // This autocloses open drawers that are not pinned if a click happens inside the app which does not target them.
+        // FORK (MobileTavern) "sticky drawers": fork-mobile sets html[data-fork-sticky-drawers="1"] on mobile,
+        // and then an open panel is only closed by an EXPLICIT action — tapping the drawer's own icon again,
+        // picking it again in the ⋮ menu, or swiping it down. Tapping the chat, the ⋮ button, or a floating
+        // extension widget (dragging a FAB out of the way to reach a button underneath) must not dismiss it.
+        const forkStickyDrawers = document.documentElement.dataset.forkStickyDrawers === '1';
         const targetParentHasOpenDrawer = clickTarget.parents('.openDrawer').length;
-        if (!clickTarget.hasClass('drawer-icon') && !clickTarget.hasClass('openDrawer')) {
+        if (!forkStickyDrawers && !clickTarget.hasClass('drawer-icon') && !clickTarget.hasClass('openDrawer')) {
             const $openDrawers = $('.openDrawer').not('.pinnedOpen');
             if ($openDrawers.length && targetParentHasOpenDrawer === 0) {
                 // Toggle icon and drawer classes

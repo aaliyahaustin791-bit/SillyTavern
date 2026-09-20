@@ -11,6 +11,7 @@ const defaultSettings = {
     fabEnabled: true,
     collapseLong: true,
     topCollapse: true,
+    stickyDrawers: true,
 };
 
 // --- Compose mode: toggle an attribute while typing (no hiding) -----------
@@ -466,6 +467,25 @@ function topmenuApplyAttr() {
     document.documentElement.dataset.forkTopmenu = extension_settings[extensionName].topCollapse ? '1' : '0';
 }
 
+// --- Sticky drawers: panels stay open until you close them -----------------
+// ST auto-closes any open drawer the moment you touch anything outside it
+// (public/script.js, the `$('html').on('touchstart mousedown')` handler). On a
+// phone that fires constantly for legitimate reasons — dragging a third-party
+// floating widget out of the way to reach a button underneath, tapping the ⋮
+// button, scrolling the chat — and the panel you were working in vanishes.
+// With this on we set html[data-fork-sticky-drawers="1"]; core skips the
+// auto-close and the panel is only closed explicitly:
+//   • tap the drawer's own icon again (or its row in the ⋮ menu)
+//   • swipe the panel down (fork-mobile's gesture, v0.2.30)
+// Accordion behaviour is untouched: opening a DIFFERENT drawer still closes the
+// previous one, because that is an explicit request.
+// Mobile-only so desktop mouse/pin workflows stay stock.
+
+function stickyDrawersApplyAttr() {
+    const on = !!extension_settings[extensionName].stickyDrawers && (isMobile() || mobileQuery.matches);
+    document.documentElement.dataset.forkStickyDrawers = on ? '1' : '0';
+}
+
 function topmenuCollectItems() {
     const items = [];
     // The 9 stock drawers: each .drawer wraps a .drawer-toggle (icon) and a
@@ -775,12 +795,16 @@ function addSettings() {
                 <input id="fork-topcollapse-toggle" type="checkbox" data-setting="topCollapse">
                 <span>Collapse top bar icons into a ⋮ menu</span>
             </label>
-            <small>Fork Mobile — v0.2.31 (top bar menu · home font · portrait cards · swipe-close tolerates scrolling)</small>
+            <label for="fork-sticky-drawers-toggle" class="checkbox_label">
+                <input id="fork-sticky-drawers-toggle" type="checkbox" data-setting="stickyDrawers">
+                <span>Keep panels open until closed (tapping outside won't dismiss them)</span>
+            </label>
+            <small>Fork Mobile — v0.2.32 (sticky drawers · top bar menu · home font · portrait cards · swipe-close tolerates scrolling)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
 
-    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle').on('change', function () {
+    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle, #fork-sticky-drawers-toggle').on('change', function () {
         const key = $(this).attr('data-setting');
         extension_settings[extensionName][key] = $(this).prop('checked');
         // Await the ACTUAL save before reloading — saveSettingsDebounced is
@@ -793,7 +817,7 @@ function addSettings() {
     // `#fork-${camelToKebab(key)}-toggle` selector built `#fork-fab-enabled-toggle`
     // which doesn't exist (the id is `fork-fab-toggle`), so the FAB checkbox
     // NEVER showed its saved state and every toggle looked like it "reverted".
-    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle').each(function () {
+    $('#fork-fab-toggle, #fork-collapse-long-toggle, #fork-topcollapse-toggle, #fork-sticky-drawers-toggle').each(function () {
         const key = $(this).attr('data-setting');
         $(this).prop('checked', !!extension_settings[extensionName][key]);
     });
@@ -823,6 +847,7 @@ jQuery(async () => {
     injectHomeFont();
     applyMobileHooks();
     topmenuApplyAttr();
+    stickyDrawersApplyAttr();
     buildFab();
     buildTopMenu();
     keepForkPinned();
@@ -831,7 +856,7 @@ jQuery(async () => {
     initComposeMode();
     initSwipeClose();
 
-    console.log('[fork-mobile] active v0.2.30 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + '}');
+    console.log('[fork-mobile] active v0.2.32 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + ',sticky:' + (document.documentElement.dataset.forkStickyDrawers === '1' ? 1 : 0) + '}');
 });
 
 export function init() {
@@ -841,6 +866,7 @@ export function init() {
         injectHomeFont();
         applyMobileHooks();
         topmenuApplyAttr();
+        stickyDrawersApplyAttr();
         buildFab();
         buildTopMenu();
         keepForkPinned();
