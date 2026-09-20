@@ -463,6 +463,12 @@ function buildFab() {
 // drawers, pinned panels, icon state classes) runs untouched. Drawer contents
 // are never hidden — only their header icons are.
 
+// Remembers where the user was, for the menu's "where was I?" dot. The ⋮
+// button now puts the open panel away before the menu appears (v0.2.33), so the
+// old "Open now" dot would never be reachable — instead we track the last
+// drawer opened OR just closed and mark that row as "Last used".
+let forkTopmenuLastId = null;
+
 function topmenuApplyAttr() {
     document.documentElement.dataset.forkTopmenu = extension_settings[extensionName].topCollapse ? '1' : '0';
 }
@@ -499,6 +505,7 @@ function topmenuCollectItems() {
         // FA glyph classes only — drop the drawer state classes and fixed-width.
         const iconClasses = [...iconEl.classList].filter(c => !['drawer-icon', 'closedIcon', 'openIcon', 'fa-fw'].includes(c));
         items.push({
+            id: drawer.id,
             title: iconEl.getAttribute('title') || drawer.id,
             iconClasses,
             active: () => !!content && content.classList.contains('openDrawer'),
@@ -514,6 +521,7 @@ function topmenuCollectItems() {
             const icon = child.querySelector('i') || child;
             const iconClasses = icon.classList ? [...icon.classList].filter(c => c.startsWith('fa-')) : [];
             items.push({
+                id: child.id,
                 title: child.getAttribute('title') || (child.textContent || '').trim().slice(0, 40) || 'Button',
                 iconClasses,
                 active: () => false,
@@ -560,9 +568,11 @@ function buildTopMenu() {
             for (const cls of item.iconClasses) ic.addClass(cls);
             row.append(ic);
             row.append($('<span class="fork-topmenu-label"></span>').text(item.title));
-            if (item.active()) {
+            const isOpenNow = item.active();
+            const isLastUsed = !isOpenNow && !!forkTopmenuLastId && item.id === forkTopmenuLastId;
+            if (isOpenNow || isLastUsed) {
                 row.addClass('fork-topmenu-active');
-                row.append($('<span class="fork-topmenu-dot" title="Open now"></span>'));
+                row.append($('<span class="fork-topmenu-dot"></span>').attr('title', isOpenNow ? 'Open now' : 'Last used'));
             }
             row.on('click', () => {
                 close();
@@ -609,9 +619,43 @@ function buildTopMenu() {
         backdrop.addClass('fork-hidden');
     };
 
-    btn.on('click', open);
+    // The ⋮ button now behaves like the top bar itself: reaching for it first
+    // puts away whatever panel is open, so the menu never floats on top of a
+    // stale drawer the user has mentally left (the backdrop covers the whole
+    // viewport, so the next tap on ⋮ lands on the backdrop and closes the menu
+    // — i.e. ⋮ reads as a plain toggle: open panel → menu, tap again → away).
+    // Closes through ST's OWN .drawer-toggle click so icon + pin state stay
+    // consistent; pinned panels are left alone (the pin means "keep open").
+    const closeOpenDrawers = () => {
+        document.querySelectorAll('.drawer-content.openDrawer:not(.pinnedOpen)').forEach((content) => {
+            const drawer = content.closest('.drawer');
+            const toggle = drawer && drawer.querySelector('.drawer-toggle');
+            if (toggle) {
+                toggle.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+            } else {
+                content.classList.remove('openDrawer');
+                content.classList.add('closedDrawer');
+            }
+        });
+    };
+
+    btn.on('click', () => {
+        closeOpenDrawers();
+        open();
+    });
     backdrop.on('click', close);
     $(document).on('click', '#fork-topmenu-close', close);
+
+    // Remember the last drawer the user touched (opened, switched to, or closed
+    // — via the menu, its icon, or the swipe gesture). Delegated on document so
+    // it catches every path, and the .drawer-toggle handler has already run by
+    // then, so the open/closed class state we read is current.
+    $(document).on('click.forkTopmenuMem', '.drawer-toggle', function () {
+        const drawer = this.closest && this.closest('.drawer');
+        if (drawer && drawer.id) {
+            forkTopmenuLastId = drawer.id;
+        }
+    });
 }
 
 // --- Swipe-down to close: settings drawers + the top-bar menu ---------------
@@ -799,7 +843,7 @@ function addSettings() {
                 <input id="fork-sticky-drawers-toggle" type="checkbox" data-setting="stickyDrawers">
                 <span>Keep panels open until closed (tapping outside won't dismiss them)</span>
             </label>
-            <small>Fork Mobile — v0.2.32 (sticky drawers · top bar menu · home font · portrait cards · swipe-close tolerates scrolling)</small>
+            <small>Fork Mobile — v0.2.33 (sticky drawers · ⋮ puts the panel away · home font · portrait cards · swipe-close tolerates scrolling)</small>
         </div>`;
 
     $('#extensions_settings').append(settingsHtml);
@@ -856,7 +900,7 @@ jQuery(async () => {
     initComposeMode();
     initSwipeClose();
 
-    console.log('[fork-mobile] active v0.2.32 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + ',sticky:' + (document.documentElement.dataset.forkStickyDrawers === '1' ? 1 : 0) + '}');
+    console.log('[fork-mobile] active v0.2.33 {topmenu:' + (extension_settings[extensionName].topCollapse ? 1 : 0) + ',sticky:' + (document.documentElement.dataset.forkStickyDrawers === '1' ? 1 : 0) + '}');
 });
 
 export function init() {
