@@ -97,7 +97,8 @@
    from a 320px phone to a wide desktop window.
    ========================================================================== */
 
-#preloader {
+#preloader,
+.mt-boot-screen {
     display: flex;
     align-items: center;
     justify-content: center;

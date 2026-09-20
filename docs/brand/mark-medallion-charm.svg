@@ -79,14 +79,29 @@
     <circle cx="91" cy="177" r="2.6"/><circle cx="121" cy="177" r="2.6"/><circle cx="151" cy="177" r="2.6"/>
   </g>
   <rect x="70" y="98" width="102" height="16" rx="7" fill="url(#woodLight)" stroke="#3f2617" stroke-width="3.2"/>
+  <!-- Head of beer (v3): a lumpy mound filling the mouth, with scattered bubble texture.
+       v1 was a rounded cloud with a pointed tail and a neat row of three dots — the user
+       read it as a CHAT BUBBLE. v2 added two overflow drips over the rim; at mark size they
+       read as FANGS hanging in the muzzle. So: no tail, no dot row, and no hanging drips —
+       just the mound, bubbles of mixed size, and a sheen. -->
   <g fill="url(#foam)" stroke="#d8c9ac" stroke-width="2">
-    <path d="M66 96 C50 96 40 87 41 77 C42 66 54 60 66 63 C71 50 87 44 100 51 C109 39 130 39 138 52 C152 46 167 53 170 66 C182 63 193 70 192 81 C191 91 181 98 166 97 Z"/>
-    <path d="M97 92 L74 107 Q70 111 79 110 L114 97 Z"/>
+    <path d="M78 103
+             C67 103 60 96 61 87
+             C62 78 70 72 79 74
+             C82 60 95 54 107 59
+             C116 48 136 48 144 59
+             C157 56 168 64 168 76
+             C175 85 169 101 158 103
+             Z"/>
   </g>
-  <g fill="#c98a3c" opacity="0.9">
-    <circle cx="92" cy="79" r="6"/><circle cx="120" cy="73" r="6"/><circle cx="147" cy="80" r="6"/>
+  <!-- foam texture: scattered bubbles of mixed size (not a row of dots) -->
+  <g fill="#e6d8b9" opacity="0.85">
+    <circle cx="93" cy="86" r="5.6"/><circle cx="113" cy="77" r="6.4"/><circle cx="134" cy="81" r="4.6"/>
+    <circle cx="150" cy="89" r="5"/><circle cx="103" cy="95" r="3.2"/><circle cx="125" cy="92" r="3.6"/>
+    <circle cx="145" cy="67" r="2.8"/><circle cx="87" cy="70" r="2.4"/>
   </g>
-  <path d="M150 100 C154 108 152 116 147 118 C141 119 139 111 141 103 Z" fill="url(#foam)"/>
+  <!-- foam sheen along the mound -->
+  <path d="M74 88 C84 78 100 72 118 72" fill="none" stroke="#fffaf0" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
 </g></g>
   </g>
 </g>
