@@ -702,19 +702,44 @@ async function firstLoadInit() {
     const initLoaderOverlay = loader.createOverlay();
     initLoaderOverlay.classList.add('splash-screen');
 
-    const splashLogo = document.createElement('img');
-    splashLogo.src = '/img/logo.png';
-    splashLogo.alt = 'SillyTavern';
-    splashLogo.className = 'splash-logo';
-    splashLogo.ariaLabel = t`SillyTavern Logo`;
+    // FORK (MobileTavern): branded boot screen. Same .mt-boot markup + classes as
+    // the static #preloader in index.html, so taking over from it is invisible —
+    // the only thing this layer adds is the rotating status line (the preloader
+    // can't rotate text: it renders before any JS exists).
+    const MtBootLines = [
+        t`Setting the table…`,
+        t`Warming the hearth…`,
+        t`Lighting the lanterns…`,
+        t`Opening the shutters…`,
+        t`Waking Momo-chan…`,
+    ];
+    const initBoot = document.createElement('div');
+    initBoot.className = 'mt-boot';
+    initBoot.innerHTML = `
+        <div class="mt-boot-glow" aria-hidden="true"></div>
+        <img class="mt-boot-mark" src="img/mt-logo-charm.png" alt="${t`MobileTavern logo`}">
+        <div class="mt-boot-wordmark">Mobile<span>Tavern</span></div>
+        <div class="mt-boot-tagline">${t`Your stories are waiting.`}</div>
+        <div class="mt-boot-status"></div>
+        <div class="mt-boot-bar" aria-hidden="true"><i></i></div>`;
 
-    const splashMessage = document.createElement('h2');
-    splashMessage.className = 'splash-message';
-    splashMessage.textContent = t`Initializing…`;
-    splashMessage.dataset.i18n = 'Initializing…';
+    const bootStatusEl = initBoot.querySelector('.mt-boot-status');
+    let bootLineIndex = 0;
+    const paintBootLine = () => {
+        bootStatusEl.textContent = MtBootLines[bootLineIndex++ % MtBootLines.length];
+    };
+    paintBootLine();
+    const bootLineTimer = setInterval(() => {
+        // Stop on our own once the overlay is gone (init finished) — no need to
+        // reach into loader internals for an explicit teardown.
+        if (!document.body.contains(bootStatusEl)) {
+            clearInterval(bootLineTimer);
+            return;
+        }
+        paintBootLine();
+    }, 3200);
 
-    initLoaderOverlay.prepend(splashLogo);
-    initLoaderOverlay.appendChild(splashMessage);
+    initLoaderOverlay.prepend(initBoot);
 
     const initLoaderHandle = loader.show({
         slug: 'app-init',

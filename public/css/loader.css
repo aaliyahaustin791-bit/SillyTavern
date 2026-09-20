@@ -86,3 +86,132 @@
     opacity: 0.9;
     letter-spacing: 0.02em;
 }
+
+/* ==========================================================================
+   FORK (MobileTavern) boot screen.
+   Shared by the static #preloader in index.html (first paint, no JS) and the
+   app-init splash that firstLoadInit() builds in script.js — same .mt-boot
+   markup in both, so the hand-off between them is invisible. Colours are
+   hard-coded on purpose: the boot screen is branding, not theme chrome, and it
+   must look identical on light and dark themes. Sized in clamp()/vw so it works
+   from a 320px phone to a wide desktop window.
+   ========================================================================== */
+
+#preloader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #141019;
+    background-image: radial-gradient(60% 42% at 50% 26%, #3a2740 0%, #1d1425 46%, #100b16 100%);
+}
+
+.mt-boot {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 2.2vh, 16px);
+    padding: 24px;
+    text-align: center;
+}
+
+/* lantern glow behind the mark */
+.mt-boot-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(78vmin, 420px);
+    height: min(78vmin, 420px);
+    transform: translate(-50%, -62%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 180, 87, 0.32) 0%, rgba(255, 180, 87, 0.07) 52%, rgba(255, 180, 87, 0) 72%);
+    animation: mt-boot-breathe 5.5s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.mt-boot-mark {
+    position: relative;
+    width: min(150px, 46vw);
+    height: auto;
+    filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.5));
+    animation: mt-boot-float 6s ease-in-out infinite;
+}
+
+.mt-boot-wordmark {
+    position: relative;
+    font-family: 'Playfair Display', var(--mainFontFamily, serif), serif;
+    font-weight: 800;
+    font-size: clamp(27px, 8.6vw, 40px);
+    line-height: 1.05;
+    color: #f4ead9;
+    letter-spacing: 0.01em;
+}
+
+.mt-boot-wordmark span {
+    font-style: italic;
+    color: #e8b563;
+}
+
+.mt-boot-tagline {
+    position: relative;
+    font-size: clamp(12px, 3.4vw, 15px);
+    color: rgba(244, 234, 217, 0.72);
+    letter-spacing: 0.01em;
+}
+
+.mt-boot-status {
+    position: relative;
+    margin-top: clamp(10px, 2.6vh, 22px);
+    min-height: 1.35em;
+    font-size: clamp(12px, 3.4vw, 15px);
+    color: #e8b563;
+    letter-spacing: 0.02em;
+}
+
+.mt-boot-bar {
+    position: relative;
+    width: clamp(120px, 36vw, 168px);
+    height: 3.5px;
+    border-radius: 2px;
+    background: rgba(232, 181, 99, 0.15);
+    overflow: hidden;
+}
+
+.mt-boot-bar i {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(232, 181, 99, 0), #e8b563 45%, #ffe0a8 60%, rgba(232, 181, 99, 0));
+    animation: mt-boot-slide 1.7s ease-in-out infinite;
+}
+
+/* The app-init splash reuses .mt-boot inside ST's own overlay: drop the
+   overlay's 4rem column gap now that the inner block owns its spacing. */
+#loader.splash-screen {
+    gap: 0;
+}
+
+@keyframes mt-boot-slide {
+    0% { transform: translateX(-115%); }
+    100% { transform: translateX(255%); }
+}
+
+@keyframes mt-boot-breathe {
+    0%, 100% { opacity: 0.75; transform: translate(-50%, -62%) scale(0.97); }
+    50% { opacity: 1; transform: translate(-50%, -62%) scale(1.04); }
+}
+
+@keyframes mt-boot-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mt-boot-glow,
+    .mt-boot-mark,
+    .mt-boot-bar i {
+        animation: none;
+    }
+}

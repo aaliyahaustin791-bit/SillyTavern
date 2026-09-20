@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>SillyTavern</title>
+    <title>MobileTavern</title>
     <base href="/">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, viewport-fit=cover, initial-scale=1, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
@@ -160,11 +160,28 @@
     <link rel="stylesheet" type="text/css" href="css/macros.css">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <!-- FORK: Playfair Display up front so the boot screen's wordmark is already styled at
+         first paint. Same id the fork-mobile injectHomeFont() probe looks for, so that
+         helper becomes a no-op instead of adding a duplicate link. -->
+    <link rel="stylesheet" id="fork-home-font" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
 </head>
 
 <body class="no-blur">
-    <div id="preloader"></div>
+    <div id="preloader">
+        <!-- FORK (MobileTavern) boot screen. This is the FIRST paint — visible before any JS
+             runs, i.e. what you look at while webpack compiles on a cold start. Pure CSS
+             animation, and the same .mt-boot markup the JS splash builds, so the hand-off
+             from this to the app-init overlay is invisible. -->
+        <div class="mt-boot">
+            <div class="mt-boot-glow" aria-hidden="true"></div>
+            <img class="mt-boot-mark" src="img/mt-logo-charm.png" alt="MobileTavern">
+            <div class="mt-boot-wordmark">Mobile<span>Tavern</span></div>
+            <div class="mt-boot-tagline" data-i18n="Your stories are waiting.">Your stories are waiting.</div>
+            <div class="mt-boot-status" data-i18n="Setting the table…">Setting the table…</div>
+            <div class="mt-boot-bar" aria-hidden="true"><i></i></div>
+        </div>
+    </div>
     <div id="bg1"></div>
     <div id="character_context_menu" class="hidden">
         <ul>
